@@ -12,6 +12,7 @@ import Link from "next/link";
 import { Gem } from "lucide-react";
 import { LogoutLink } from "@kinde-oss/kinde-auth-nextjs/server";
 import { Icons } from "./Icons";
+import Image from "next/image";
 
 interface UserAccountNavProps {
   email: string | undefined;
@@ -31,10 +32,21 @@ const UserAccountNav = async ({
       <DropdownMenuTrigger asChild className="overflow-visible">
         <Button className="rounded-full h-8 w-8 aspect-square bg-slate-400">
           <Avatar className="relative w-8 h-8">
-            <AvatarFallback>
-              <span className="sr-only">{name}</span>
-              <Icons.user className="h-4 w-4 text-zinc-900" />
-            </AvatarFallback>
+            {imageUrl ? (
+              <div className="relative aspect-square h-full w-full">
+                <Image
+                  fill
+                  src={imageUrl}
+                  alt="profile picture"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            ) : (
+              <AvatarFallback>
+                <span className="sr-only">{name}</span>
+                <Icons.user className="h-4 w-4 text-zinc-900" />
+              </AvatarFallback>
+            )}
           </Avatar>
         </Button>
       </DropdownMenuTrigger>

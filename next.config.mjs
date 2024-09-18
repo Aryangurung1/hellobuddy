@@ -12,15 +12,24 @@ const nextConfig = {
                 destination: '/api/auth/register',
                 permanent: true,
             },
-
-        ]
+        ];
+    },
+    images: {
+        remotePatterns: [
+            {
+                protocol: 'https',
+                hostname: 'gravatar.com',
+                port: '',
+                pathname: '/**', // Allows all paths
+            },
+        ],
     },
     webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
-        config.resolve.alias.canvas = false
-        config.resolve.alias.encoding = false
+        config.resolve.alias.canvas = false;
+        config.resolve.alias.encoding = false;
 
-        return config
-    }
+        return config;
+    },
 };
 
 export default nextConfig;
