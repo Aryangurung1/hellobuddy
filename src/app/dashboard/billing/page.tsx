@@ -5,7 +5,9 @@ const Page = async () => {
   try {
     const subscriptionPlan = await getUserSubscriptionPlan();
 
+    // Check if subscriptionPlan or its id is null/undefined
     if (!subscriptionPlan) {
+      console.error("Invalid subscription plan data:", subscriptionPlan);
       throw new Error("Subscription plan not found or invalid data returned.");
     }
 
