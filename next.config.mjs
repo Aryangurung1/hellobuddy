@@ -12,6 +12,11 @@ const nextConfig = {
                 destination: '/api/auth/register',
                 permanent: true,
             },
+            {
+                source: '/log-out',  // This will be the path the user hits to log out
+                destination: '/api/auth/logout',  // This is the path where your logout logic will reside
+                permanent: true,
+            },
         ];
     },
     images: {
