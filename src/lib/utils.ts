@@ -45,7 +45,7 @@ export function constructMetadata({
       creator: "@aryangurung",
     },
     icons,
-    metadataBase: new URL("https://hellobuddy-sable.vercel.app"),
+    metadataBase: new URL("https://hellobuddy-kappa.vercel.app"),
     ...(noIndex && {
       robots: {
         index: false,
