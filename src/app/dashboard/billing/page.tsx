@@ -1,5 +1,6 @@
 import BillingForm from "@/components/BillingForm";
 import { getUserSubscriptionPlan } from "@/lib/stripe";
+import { redirect } from "next/navigation";
 
 const Page = async () => {
   try {
@@ -13,10 +14,7 @@ const Page = async () => {
 
     return <BillingForm subscriptionPlan={subscriptionPlan} />;
   } catch (error) {
-    console.error("Error fetching subscription plan:", error);
-    return (
-      <div>Error loading subscription information. Please try again later.</div>
-    );
+    redirect("/sign-in");
   }
 };
 
