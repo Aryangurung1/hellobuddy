@@ -13,10 +13,14 @@ const nextConfig = {
                 permanent: true,
             },
             {
-                source: '/log-out',  // This will be the path the user hits to log out
-                destination: '/api/auth/logout',  // This is the path where your logout logic will reside
+                source: '/log-out',
+                destination: '/api/auth/logout',
                 permanent: true,
             },
+        ];
+    },
+    async headers() {
+        return [
             {
                 source: "/api/auth/(.*)",
                 headers: [
