@@ -17,6 +17,15 @@ const nextConfig = {
                 destination: '/api/auth/logout',  // This is the path where your logout logic will reside
                 permanent: true,
             },
+            {
+                source: "/api/auth/(.*)",
+                headers: [
+                    {
+                        key: "Cache-Control",
+                        value: "no-store, max-age=0",
+                    },
+                ],
+            },
         ];
     },
     images: {
