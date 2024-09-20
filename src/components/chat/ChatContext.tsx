@@ -9,6 +9,7 @@ type StreamResponse = {
   message: string;
   handleInputChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   isLoading: boolean;
+  setMessage: React.Dispatch<React.SetStateAction<string>>;
 };
 
 export const ChatContext = createContext<StreamResponse>({
@@ -16,6 +17,7 @@ export const ChatContext = createContext<StreamResponse>({
   message: "",
   handleInputChange: () => {},
   isLoading: false,
+  setMessage: () => {},
 });
 
 interface Props {
@@ -205,6 +207,7 @@ export const ChatContextProvider = ({ fileId, children }: Props) => {
         message,
         handleInputChange,
         isLoading,
+        setMessage,
       }}
     >
       {children}
