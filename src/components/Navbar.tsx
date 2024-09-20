@@ -19,7 +19,7 @@ const Navbar = async () => {
       <MaxWidthWrapper>
         <div className="flex h-14 items-center justify-between border-b border-zinc-200">
           <Link href="/" className="flex z-40 font-semibold">
-            <span>HelloBuddy</span>
+            <span>HelloBuddy how are you</span>
           </Link>
 
           <MobileNav isAuth={!!user} />
@@ -71,7 +71,6 @@ const Navbar = async () => {
                       : `${user.given_name} ${user.family_name}`
                   }
                   email={user.email ?? ""}
-                  imageUrl={user.picture ?? ""}
                 />
               </>
             )}
