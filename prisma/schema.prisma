@@ -14,16 +14,35 @@ datasource db {
 }
 
 model User {
-  id    String @id @unique
-  email String @unique
-
-  File    File[]
-  Message Message[]
+  id        String    @id @unique
+  email     String    @unique
+  createdAt DateTime  @default(now())
+  File      File[]
+  Message   Message[]
 
   stripeCustomerId       String?   @unique @map(name: "stripe_customer_id")
   stripeSubscriptionId   String?   @unique @map(name: "stripe_subscription_id")
   stripePriceId          String?   @map(name: "stripe_price_id")
   stripeCurrentPeriodEnd DateTime? @map(name: "stripe_current_period_end")
+
+  esewaPaymentId        String?   @unique @map(name: "esewa_payment_id") // Unique payment identifier for eSewa
+  esewaCurrentPeriodEnd DateTime? @map(name: "esewa_current_period_end") // Subscription validity for eSewa
+  paymentMethod         String    @default("Stripe")
+
+  isAdmin                Boolean             @default(false)
+  isSuspend              Boolean             @default(false)
+  hasAcceptedTerms       Boolean             @default(false)
+  acceptedTermsVersion   TermsAndConditions? @relation(fields: [acceptedTermsVersionId], references: [id])
+  acceptedTermsVersionId String?
+}
+
+model TermsAndConditions {
+  id        String   @id @default(cuid())
+  version   String   @unique
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  isActive  Boolean  @default(true)
+  Users     User[]
 }
 
 enum UploadStatus {

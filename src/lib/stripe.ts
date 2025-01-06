@@ -36,14 +36,23 @@ export async function getUserSubscriptionPlan() {
     };
   }
 
+  // const isSubscribed = Boolean(
+  //   dbUser.stripePriceId &&
+  //     dbUser.stripeCurrentPeriodEnd && // 86400000 = 1 day
+  //     dbUser.stripeCurrentPeriodEnd.getTime() + 86_400_000 > Date.now()
+  // );
+
   const isSubscribed = Boolean(
-    dbUser.stripePriceId &&
-      dbUser.stripeCurrentPeriodEnd && // 86400000 = 1 day
-      dbUser.stripeCurrentPeriodEnd.getTime() + 86_400_000 > Date.now()
+    (dbUser.stripeCurrentPeriodEnd &&
+      dbUser.stripeCurrentPeriodEnd.getTime() > Date.now()) ||
+      (dbUser.esewaCurrentPeriodEnd &&
+        dbUser.esewaCurrentPeriodEnd.getTime() > Date.now())
   );
 
   const plan = isSubscribed
-    ? PLANS.find((plan) => plan.price.priceIds.test === dbUser.stripePriceId)
+    ? dbUser.paymentMethod === "Stripe"
+      ? PLANS.find((plan) => plan.price.priceIds.test === dbUser.stripePriceId)
+      : PLANS.find((plan) => plan.slug === "esewa")
     : null;
 
   let isCanceled = false;

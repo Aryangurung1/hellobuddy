@@ -8,15 +8,19 @@ import { ChevronLeft, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "../ui/button";
 import { ChatContextProvider } from "./ChatContext";
+import { PLANS } from "@/config/stripe";
 
 interface ChatWrapperProps {
   fileId: string;
+  isSubscribed: boolean;
 }
 
-const ChatWrapper = ({ fileId }: ChatWrapperProps) => {
+const ChatWrapper = ({ fileId, isSubscribed }: ChatWrapperProps) => {
   const { data, isLoading, refetch } = trpc.getFileUploadStatus.useQuery({
     fileId,
   });
+  const proPage = PLANS.find((plan) => plan.name === "Pro")?.pagesPerPdf;
+  const freePage = PLANS.find((plan) => plan.name === "Free")?.pagesPerPdf;
 
   useEffect(() => {
     if (data?.status !== "SUCCESS" && data?.status !== "FAILED") {
@@ -67,10 +71,19 @@ const ChatWrapper = ({ fileId }: ChatWrapperProps) => {
           <div className="flex flex-col items-center gap-2">
             <XCircle className="h-8 w-8 text-red-500" />
             <h3 className="font-semibold text-xl">Too many Pages in PDF</h3>
-            <p className="text-zinc-500 text-sm">
-              Your <span className="font-medium">Free </span> plan supports up
-              to 5 pages per PDF.
-            </p>
+
+            {isSubscribed ? (
+              <p className="text-zinc-500 text-sm">
+                Your <span className="font-medium">Pro </span> plan supports up
+                to {proPage} pages per PDF.
+              </p>
+            ) : (
+              <p className="text-zinc-500 text-sm">
+                Your <span className="font-medium">Free </span> plan supports up
+                to {freePage} pages per PDF.{" "}
+              </p>
+            )}
+
             <Link
               href="/dashboard"
               className={buttonVariants({

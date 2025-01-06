@@ -59,6 +59,7 @@ const onUploadComplete = async ({
     const pageLevelDocs = await loader.load();
 
     const pagesAmt = pageLevelDocs.length;
+    console.log("this is the page", pagesAmt);
 
     const { subscriptionPlan } = metadata;
     const { isSubscribed } = subscriptionPlan;
@@ -67,7 +68,9 @@ const onUploadComplete = async ({
       pagesAmt > PLANS.find((plan) => plan.name === "Pro")!.pagesPerPdf;
 
     const isFreeExceeded =
-      pagesAmt > PLANS.find((plan) => plan.name == "Free")!.pagesPerPdf;
+      pagesAmt > PLANS.find((plan) => plan.name === "Free")!.pagesPerPdf;
+
+    console.log("what is the value", isFreeExceeded);
 
     if ((isSubscribed && isProExceeded) || (!isSubscribed && isFreeExceeded)) {
       await db.file.update({
@@ -78,6 +81,7 @@ const onUploadComplete = async ({
           id: createdFile.id,
         },
       });
+      throw Error("Too much page");
     }
 
     const embeddings = new OpenAIEmbeddings({

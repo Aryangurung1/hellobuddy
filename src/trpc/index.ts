@@ -6,7 +6,192 @@ import { z } from "zod";
 import { INFINITE_QUERY_LIMIT } from "@/config/infinite-query";
 import { absoluteUrl } from "@/lib/utils";
 import { getUserSubscriptionPlan, stripe } from "@/lib/stripe";
+import nodemailer from "nodemailer";
 import { PLANS } from "@/config/stripe";
+import { subMonths, startOfMonth, endOfMonth } from "date-fns";
+import { Prisma } from "@prisma/client";
+
+const DEFAULT_TERMS = `Terms and Conditions
+
+Welcome to our interactive chatbot platform (the "HelloBuddy"). By using the Service, you agree to the following terms and conditions. Please read them carefully.
+
+1. Acceptance of Terms
+
+By accessing or using the Service, you confirm that you have read, understood, and agree to be bound by these Terms and Conditions, as well as our Privacy Policy. If you do not agree, you must not use the Service.
+
+2. User Responsibilities
+
+2.1 Account Creation and Authentication
+
+You must create an account using our authentication system powered by Kinde.
+
+You are responsible for maintaining the confidentiality of your account credentials.
+
+2.2 Usage Limits
+
+Free-tier users have limited access to upload and interact with PDFs, including restrictions on file size and page count.
+
+Subscription users gain access to higher file size and page limits.
+
+2.3 Prohibited ActionsYou agree not to:
+
+Violate any laws or regulations.
+
+Upload PDFs containing illegal, harmful, or offensive content.
+
+Attempt to bypass usage limits or security measures.
+
+2.4 Violations
+
+Accounts found violating these terms may be suspended or permanently deleted at the sole discretion of the Service.
+
+3. User Data and Privacy
+
+3.1 Data Collection
+
+Your interactions with the chatbot, including uploaded PDFs, are stored securely in an encrypted format.
+
+3.2 Data Usage
+
+Administrators can view details such as which PDFs you have uploaded and delete them if necessary.
+
+Administrators cannot access your chat interactions unless required by law.
+
+3.3 Data Security
+
+All user data is stored in a secure environment, akin to platforms like S3 buckets, to ensure the highest level of security and encryption.
+
+4. Administrator Rights
+
+4.1 Access to Information
+
+Administrators can only access user information or take action on accounts in compliance with applicable laws.
+
+4.2 PDF Management
+
+Administrators may delete uploaded PDFs if deemed necessary for policy enforcement or legal compliance.
+
+5. Subscription and Cancellation
+
+5.1 Subscription Benefits
+
+Paid subscription users enjoy increased file size limits, additional page access, and other premium features.
+
+5.2 Cancellation
+
+You may cancel your subscription at any time. Upon cancellation, your access will revert to the free-tier limitations at the end of the billing cycle.
+
+6. Limitation of Liability
+
+The Service is provided "as is" and "as available." We do not guarantee uninterrupted access or functionality.
+
+We are not responsible for any loss or damages resulting from your use of the Service, including but not limited to data breaches caused by factors beyond our control.
+
+7. Modifications to Terms
+
+We reserve the right to modify these Terms and Conditions at any time. Any changes will be communicated through the Service. Continued use after changes constitutes acceptance of the revised terms.
+
+8. Governing Law
+
+These Terms and Conditions are governed by and construed in accordance with the laws of Nepal.`;
+
+const fetchAccessToken = async () => {
+  const response = await fetch("https://hellobu.kinde.com/oauth/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      audience: "https://hellobu.kinde.com/api",
+      grant_type: "client_credentials", // You can use other grant types depending on your flow
+      client_id: "a115a3af6750419893fae537a390d711",
+      client_secret: `k5vYA6qYQAO1IIiAwqjBCruohjPw9jSdUTkWHWyBMlNp09fsO`,
+    }),
+  });
+
+  const data = await response.json();
+  console.log(data);
+  return data.access_token; // The token is typically in 'access_token'
+};
+
+// Function to fetch user info from Kinde by email
+const fetchUserFromKindeByEmail = async (userId: string) => {
+  try {
+    const accessToken = await fetchAccessToken(); // Fetch the token
+
+    if (!accessToken) {
+      throw new Error("Failed to fetch access token.");
+    }
+
+    const apiUrl = `https://hellobu.kinde.com/api/v1/user?id=${userId}`; // Adjust the query parameter as needed
+
+    const response = await fetch(apiUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text(); // Get detailed error response
+      throw new Error(
+        `Error fetching user info from Kinde. Status: ${response.status}, Message: ${errorText}`
+      );
+    }
+
+    const kindeUser = await response.json();
+    console.log("Fetched Kinde user:", kindeUser);
+    return kindeUser;
+  } catch (error) {
+    console.error(
+      `Error fetching user info for userId: ${userId}. Details:`,
+      error
+    );
+    return null;
+  }
+};
+
+// Create a transporter for sending emails using Nodemailer
+const transporter = nodemailer.createTransport({
+  service: "Gmail", // You can use any email service you prefer
+  auth: {
+    user: process.env.EMAIL_USER, // Your email
+    pass: process.env.EMAIL_PASS, // Your email password or an app password
+  },
+});
+
+async function sendEmail(userEmail: string, isSuspended: boolean) {
+  const subject = isSuspended ? "Account Suspension" : "Account Reactivation";
+
+  const message = isSuspended
+    ? `Dear Valued User,\n\nWe regret to inform you that your account has been suspended due to a violation of our terms and conditions. If you believe this suspension is an error or you would like to appeal, please contact our support team at supporthellobuddy@gmail.com.\n\nThank you for your understanding.\n\nBest regards,\nThe Support Team`
+    : `Dear Valued User,\n\nWe are pleased to inform you that your account has been successfully reactivated. You can now access all the features of your account as usual.\n\nIf you have any questions or require assistance, please do not hesitate to contact us at supporthellobuddy@gmail.com.\n\nBest regards,\nThe Support Team`;
+
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: userEmail,
+      subject,
+      text: message,
+    });
+  } catch (error) {
+    console.error("Error sending email:", error);
+  }
+}
+
+async function sendAccountDeletionEmail(userEmail: string) {
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: userEmail,
+      subject: "Your Account Has Been Deleted",
+      text: `Dear user,\n\nYour account has been permanently deleted. If you have any questions, please contact support.\n\nThank you.`,
+    });
+  } catch (error) {
+    console.error("Error sending deletion email:", error);
+  }
+}
 
 export const appRouter = router({
   authCallback: publicProcedure.query(async () => {
@@ -15,25 +200,172 @@ export const appRouter = router({
 
     if (!user.id || !user.email) throw new TRPCError({ code: "UNAUTHORIZED" });
 
-    // check if the user is in the database
-    const dbUser = await db.user.findFirst({
-      where: {
-        id: user.id,
-      },
+    let dbUser = await db.user.findFirst({
+      where: { id: user.id },
     });
 
+    // If user does not exist, create them and set admin if email matches
     if (!dbUser) {
-      // create user in db
-      await db.user.create({
+      dbUser = await db.user.create({
         data: {
           id: user.id,
           email: user.email,
+          isAdmin: user.email === "aryan.gurung683@gmail.com",
+        },
+      });
+    } else if (user.email === "aryan.gurung683@gmail.com" && !dbUser.isAdmin) {
+      // Update the existing user to set `isAdmin` if it wasn't already set
+      dbUser = await db.user.update({
+        where: { id: user.id },
+        data: { isAdmin: true },
+      });
+    }
+
+    // Always return the correct admin status
+    return {
+      success: true,
+      isAdmin: dbUser.isAdmin,
+      isNewUser: !dbUser.hasAcceptedTerms,
+    };
+  }),
+
+  // Example tRPC router query
+  getCurrentUser: privateProcedure.query(({ ctx }) => {
+    return db.user.findUnique({
+      where: { id: ctx.userId },
+    });
+  }),
+
+  getUserTermsStatus: privateProcedure.query(async ({ ctx }) => {
+    const user = await db.user.findUnique({
+      where: { id: ctx.userId },
+      select: { hasAcceptedTerms: true },
+    });
+
+    if (!user) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+    }
+
+    return user;
+  }),
+
+  getTermsAndConditions: publicProcedure.query(async () => {
+    let terms = await db.termsAndConditions.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!terms) {
+      await db.termsAndConditions.create({
+        data: {
+          version: "1.0",
+          content: DEFAULT_TERMS,
+          isActive: true,
+        },
+      });
+      console.log("Default Terms and Conditions added.");
+    }
+
+    return terms;
+  }),
+  acceptTermsAndConditions: privateProcedure.mutation(async ({ ctx }) => {
+    const { userId } = ctx;
+
+    await db.user.update({
+      where: { id: userId },
+      data: { hasAcceptedTerms: true },
+    });
+
+    return { success: true };
+  }),
+
+  rejectTermsAndConditions: privateProcedure.mutation(async ({ ctx }) => {
+    // const { userId } = ctx;
+
+    // Delete the user's data
+    // await db.user.delete({
+    //   where: { id: userId },
+    // });
+
+    return { success: true };
+  }),
+
+  getLatestTermsAndConditions: privateProcedure.query(async ({ ctx }) => {
+    const user = await db.user.findUnique({
+      where: { id: ctx.userId },
+      select: { isAdmin: true },
+    });
+
+    if (!user?.isAdmin) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized" });
+    }
+
+    let latestTerms = await db.termsAndConditions.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!latestTerms) {
+      // If no terms exist, create the default terms
+      latestTerms = await db.termsAndConditions.create({
+        data: {
+          content: DEFAULT_TERMS,
+          version: "1.0",
+          isActive: true,
         },
       });
     }
 
-    return { success: true };
+    if (!latestTerms) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "Terms and conditions not found",
+      });
+    }
+
+    return latestTerms;
   }),
+
+  updateTermsAndConditions: privateProcedure
+    .input(
+      z.object({
+        content: z.string(),
+        version: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = await db.user.findUnique({
+        where: { id: ctx.userId },
+        select: { isAdmin: true },
+      });
+
+      if (!user?.isAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized" });
+      }
+
+      // Deactivate the current active terms
+      await db.termsAndConditions.updateMany({
+        where: { isActive: true },
+        data: { isActive: false },
+      });
+
+      // Create new terms and conditions
+      const newTerms = await db.termsAndConditions.create({
+        data: {
+          content: input.content,
+          version: input.version,
+          isActive: true,
+        },
+      });
+
+      // Set hasAcceptedTerms to false for all users
+      await db.user.updateMany({
+        where: {}, // No condition means it updates all users
+        data: { hasAcceptedTerms: false },
+      });
+
+      return newTerms;
+    }),
 
   getFileMessages: privateProcedure
     .input(
@@ -195,6 +527,532 @@ export const appRouter = router({
 
     return { url: stripeSession.url };
   }),
+
+  getCounts: publicProcedure.query(async () => {
+    const totalUsers = await db.user.count({
+      where: {
+        isAdmin: false,
+      },
+    });
+    console.log("heelo", totalUsers);
+    const activeUsers = await db.user.count({
+      where: { isSuspend: false, isAdmin: false },
+    });
+
+    const suspendedUsers = await db.user.count({
+      where: { isSuspend: true, isAdmin: false },
+    });
+
+    return {
+      totalUsers,
+      activeUsers,
+      suspendedUsers,
+    };
+  }),
+
+  getAllUsers: privateProcedure.query(async ({ ctx }) => {
+    // Fetch all non-admin users from Prisma (your database)
+    const users = await db.user.findMany({
+      where: { isAdmin: false },
+    });
+
+    // Fetch user details from Kinde for each user
+    const usersWithDetails = await Promise.all(
+      users.map(async (user) => {
+        // Fetch user data from Kinde by email
+        const kindeUser = await fetchUserFromKindeByEmail(user.id);
+
+        // If we successfully fetch user details, return the user with the name
+        return {
+          ...user,
+          name: kindeUser
+            ? `${kindeUser.first_name} ${kindeUser.last_name}`
+            : "No Name", // Handle cases where no user info is found
+        };
+      })
+    );
+
+    return usersWithDetails;
+  }),
+
+  updatePayment: privateProcedure
+    .input(
+      z.object({
+        transactionCode: z.string(), // Only transaction_code is required
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.userId; // Retrieve the current user ID from the session
+
+      if (!userId) {
+        throw new Error("Unauthorized. User not found.");
+      }
+
+      console.log("userID", userId);
+
+      try {
+        // Update the user payment details
+        const updatedUser = await db.user.update({
+          where: { id: userId },
+          data: {
+            esewaPaymentId: input.transactionCode,
+            esewaCurrentPeriodEnd: new Date(
+              Date.now() + 30 * 24 * 60 * 60 * 1000
+            ), // 30 days validity
+            paymentMethod: "eSewa",
+          },
+        });
+
+        return { success: true, user: updatedUser };
+      } catch (error) {
+        console.error("Error updating payment:", error);
+        throw new Error("Failed to update payment.");
+      }
+    }),
+
+  editUser: privateProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const accessToken = await fetchAccessToken();
+
+      if (!accessToken) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch Kinde access token",
+        });
+      }
+
+      const { id, name } = input;
+
+      // Update in Kinde
+      const response = await fetch(
+        `https://hellobu.kinde.com/api/v1/user?id=${id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            given_name: name.split(" ")[0],
+            family_name: name.split(" ").slice(1).join(" "),
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update user in Kinde: ${error}`,
+        });
+      }
+      return { id, name };
+    }),
+
+  suspendUser: privateProcedure
+    .input(
+      z.object({
+        id: z.string(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // User ID
+      const { id } = input;
+      const user = await db.user.findUnique({
+        where: { id: id },
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      const accessToken = await fetchAccessToken();
+
+      if (!accessToken) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch Kinde access token",
+        });
+      }
+
+      // Update in Kinde
+      const response = await fetch(
+        `https://hellobu.kinde.com/api/v1/user?id=${id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            is_suspended: true,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update user in Kinde: ${error}`,
+        });
+      }
+
+      // Suspend the user in Prisma database
+      const updatedUser = await db.user.update({
+        where: { id: id },
+        data: { isSuspend: true },
+      });
+
+      await sendEmail(updatedUser.email, true);
+
+      return updatedUser;
+    }),
+
+  unSuspendUser: privateProcedure
+    .input(
+      z.object({
+        id: z.string(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // User ID
+      const { id } = input;
+      const user = await db.user.findUnique({
+        where: { id: id },
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      const accessToken = await fetchAccessToken();
+
+      if (!accessToken) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch Kinde access token",
+        });
+      }
+
+      // Update in Kinde
+      const response = await fetch(
+        `https://hellobu.kinde.com/api/v1/user?id=${id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            is_suspended: false,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update user in Kinde: ${error}`,
+        });
+      }
+
+      // Suspend the user in Prisma database
+      const updatedUser = await db.user.update({
+        where: { id: id },
+        data: { isSuspend: false },
+      });
+
+      await sendEmail(updatedUser.email, false);
+
+      return updatedUser;
+    }),
+
+  deleteUser: privateProcedure
+    .input(
+      z.object({
+        id: z.string(), // The ID of the user to delete
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { id } = input;
+
+      // Fetch user from Prisma to validate existence
+      const user = await db.user.findUnique({
+        where: { id },
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found",
+        });
+      }
+
+      // Fetch Kinde Access Token
+      const accessToken = await fetchAccessToken();
+
+      if (!accessToken) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch Kinde access token",
+        });
+      }
+
+      // Delete the user from Kinde
+      const kindeResponse = await fetch(
+        `https://hellobu.kinde.com/api/v1/user?id=${id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!kindeResponse.ok) {
+        const errorText = await kindeResponse.text();
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to delete user in Kinde: ${errorText}`,
+        });
+      }
+
+      // Delete the user from Prisma
+      await db.user.delete({
+        where: { id },
+      });
+
+      await sendAccountDeletionEmail(user.email);
+
+      return { success: true, message: "User deleted successfully" };
+    }),
+
+  getUserGrowth: publicProcedure.query(async () => {
+    // Define the date range (e.g., past 6 months)
+    const now = new Date();
+    const start = subMonths(now, 5); // Go back 5 months
+    const end = endOfMonth(now);
+
+    // Query grouped user data from Prisma
+    const data = await db.user.groupBy({
+      by: ["createdAt"],
+      _count: {
+        id: true,
+      },
+      where: {
+        createdAt: {
+          gte: start,
+          lte: end,
+        },
+      },
+    });
+
+    // Process data into month-wise buckets
+    const months = [];
+    for (let i = 0; i < 6; i++) {
+      const monthStart = startOfMonth(subMonths(now, i));
+      const monthEnd = endOfMonth(subMonths(now, i));
+      const count = data
+        .filter(
+          (entry) =>
+            entry.createdAt >= monthStart && entry.createdAt <= monthEnd
+        )
+        .reduce((sum, entry) => sum + entry._count.id, 0);
+
+      months.unshift({
+        month: monthStart.toLocaleString("default", { month: "short" }),
+        users: count,
+      });
+    }
+
+    return months;
+  }),
+
+  // getPaginatedUsers: publicProcedure
+  //   .input(
+  //     z.object({
+  //       page: z.number().int().positive(),
+  //       limit: z.number().int().positive(),
+  //       searchTerm: z.string().optional(),
+  //     })
+  //   )
+  //   .query(async ({ input }) => {
+  //     const { page, limit, searchTerm } = input;
+  //     const skip = (page - 1) * limit;
+
+  //     let where: Prisma.UserWhereInput = {
+  //       isAdmin: false, // Exclude admin users
+  //     };
+
+  //     // if (searchTerm) {
+  //     //   where = {
+  //     //     ...where,
+  //     //     OR: [
+  //     //       { email: { contains: searchTerm, mode: "insensitive" } },
+  //     //       {
+  //     //         isSuspend:
+  //     //           searchTerm.toLowerCase() === "suspended"
+  //     //             ? true
+  //     //             : searchTerm.toLowerCase() === "active"
+  //     //             ? false
+  //     //             : undefined,
+  //     //       },
+  //     //     ],
+  //     //   };
+  //     // }
+
+  //     const allUsers = await db.user.findMany({
+  //       where,
+  //       orderBy: { createdAt: "desc" },
+  //       skip,
+  //       take: limit,
+  //       select: {
+  //         id: true,
+  //         email: true,
+  //         stripeCustomerId: true,
+  //         stripeSubscriptionId: true,
+  //         stripePriceId: true,
+  //         stripeCurrentPeriodEnd: true,
+  //         isSuspend: true,
+  //       },
+  //     });
+
+  //     const usersWithDetails = await Promise.all(
+  //       allUsers.map(async (user) => {
+  //         const kindeUser = await fetchUserFromKindeByEmail(user.id);
+  //         const fullName = kindeUser
+  //           ? `${kindeUser.first_name} ${kindeUser.last_name}`
+  //           : "No Name";
+
+  //         return {
+  //           ...user,
+  //           name: fullName,
+  //         };
+  //       })
+  //     );
+
+  //     let filteredUsers = usersWithDetails;
+
+  //     if (searchTerm) {
+  //       const lowerSearchTerm = searchTerm.toLowerCase();
+  //       filteredUsers = usersWithDetails.filter(
+  //         (user) =>
+  //           user.name.toLowerCase().includes(lowerSearchTerm) ||
+  //           user.email.toLowerCase().includes(lowerSearchTerm) ||
+  //           (user.isSuspend ? "suspended" : "active").includes(lowerSearchTerm)
+  //       );
+  //     }
+
+  //     const paginatedUsers = filteredUsers.slice(skip, skip + limit);
+
+  //     return {
+  //       users: paginatedUsers,
+  //       total: filteredUsers.length,
+  //     };
+  //   }),
+  getPaginatedUsers: publicProcedure
+    .input(
+      z.object({
+        page: z.number().int().positive(),
+        limit: z.number().int().positive(),
+        searchTerm: z.string().optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      const { page, limit, searchTerm } = input;
+      const skip = (page - 1) * limit;
+
+      let where: Prisma.UserWhereInput = {
+        isAdmin: false, // Exclude admin users
+      };
+
+      // Fetch all non-admin users
+      const allUsers = await db.user.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          email: true,
+          stripeCustomerId: true,
+          stripeSubscriptionId: true,
+          stripePriceId: true,
+          stripeCurrentPeriodEnd: true,
+          isSuspend: true,
+        },
+      });
+
+      // Fetch Kinde details for all users
+      const usersWithDetails = await Promise.all(
+        allUsers.map(async (user) => {
+          const kindeUser = await fetchUserFromKindeByEmail(user.id);
+          const fullName = kindeUser
+            ? `${kindeUser.first_name} ${kindeUser.last_name}`
+            : "No Name";
+
+          return {
+            ...user,
+            name: fullName,
+          };
+        })
+      );
+
+      // Apply search filter
+      let filteredUsers = usersWithDetails;
+      if (searchTerm) {
+        const lowerSearchTerm = searchTerm.toLowerCase();
+        filteredUsers = usersWithDetails.filter(
+          (user) =>
+            user.name.toLowerCase().includes(lowerSearchTerm) ||
+            user.email.toLowerCase().includes(lowerSearchTerm) ||
+            (user.isSuspend ? "suspended" : "active").includes(lowerSearchTerm)
+        );
+      }
+
+      // Apply pagination to filtered results
+      const paginatedUsers = filteredUsers.slice(skip, skip + limit);
+
+      return {
+        users: paginatedUsers,
+        total: filteredUsers.length,
+      };
+    }),
+
+  getUserPDFs: privateProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const files = await db.file.findMany({
+        where: {
+          userId: input.userId,
+        },
+        select: {
+          id: true,
+          name: true,
+          createdAt: true,
+          url: true,
+        },
+      });
+      return files;
+    }),
+
+  deletePDF: privateProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const file = await db.file.delete({
+        where: {
+          id: input.id,
+        },
+      });
+      return file;
+    }),
 });
 
 export type AppRouter = typeof appRouter;

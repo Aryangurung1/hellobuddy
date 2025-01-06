@@ -1,3 +1,4 @@
+import Footer from "@/components/Footer";
 import MaxWidthWrapper from "@/components/MaxWidthWrapper";
 import UpgradeButton from "@/components/UpgradeButton";
 import { buttonVariants } from "@/components/ui/button";
@@ -74,7 +75,7 @@ const Page = async () => {
 
   return (
     <>
-      <MaxWidthWrapper className="mb-8 mt-24 text-center max-w-5xl">
+      <MaxWidthWrapper className="mb-32 mt-24 text-center max-w-5xl">
         <div className="mx-auto mb-10 sm:max-w-lg">
           <h1 className="text-6xl font-bold sm:text-7xl">Pricing</h1>
           <p className="mt-5 text-gray-600 sm:text-lg">
@@ -203,6 +204,7 @@ const Page = async () => {
           </TooltipProvider>
         </div>
       </MaxWidthWrapper>
+      <Footer />
     </>
   );
 };

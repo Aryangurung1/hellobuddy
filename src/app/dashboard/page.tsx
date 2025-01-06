@@ -3,15 +3,24 @@ import { db } from "@/db";
 import { getUserSubscriptionPlan } from "@/lib/stripe";
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import { redirect } from "next/navigation";
+import DashboardClient from "./DashboardClient";
 
 const Page = async () => {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const { isAuthenticated, getPermission } = getKindeServerSession();
+  const isLoggedIn = await isAuthenticated();
 
-  if (!user || !user.id) {
-    console.log("prolem");
+  if (!isLoggedIn) {
     redirect("/sign-in");
   }
+
+  const requiredPermission = await getPermission("admin:permission");
+
+  if (requiredPermission?.isGranted) {
+    redirect("/admindashboard");
+  }
+
+  const { getUser } = getKindeServerSession();
+  const user = await getUser();
 
   const dbUser = await db.user.findFirst({
     where: {
@@ -23,7 +32,13 @@ const Page = async () => {
 
   const subscriptionPlan = await getUserSubscriptionPlan();
 
-  return <Dashboard subscriptionPlan={subscriptionPlan} />;
+  return (
+    <DashboardClient
+      subscriptionPlan={subscriptionPlan}
+      // hasAcceptedTerms={dbUser.hasAcceptedTerms}
+      userId={user.id}
+    />
+  );
 };
 
 export default Page;

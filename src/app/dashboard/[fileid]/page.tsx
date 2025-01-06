@@ -1,8 +1,14 @@
 import ChatWrapper from "@/components/chat/ChatWrapper";
 import PdfRenderer from "@/components/PdfRenderer";
+import { PLANS } from "@/config/stripe";
 import { db } from "@/db";
+import { getUserSubscriptionPlan } from "@/lib/stripe";
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
+import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { notFound, redirect } from "next/navigation";
+import fs from "fs";
+import path from "path";
+import axios from "axios";
 
 interface PageProps {
   params: {
@@ -10,18 +16,21 @@ interface PageProps {
   };
 }
 
+const downloadFile = async (url: string, localPath: string) => {
+  const response = await axios.get(url, { responseType: "arraybuffer" });
+  fs.writeFileSync(localPath, response.data);
+};
+
 const Page = async ({ params }: PageProps) => {
   //retrive the file id
   const { fileid } = params;
-
-  console.log(fileid);
+  const subscriptionPlan = await getUserSubscriptionPlan();
 
   const { getUser } = getKindeServerSession();
   const user = await getUser();
 
   if (!user || !user.id) redirect(`/sign-in`);
 
-  //make database call
   const file = await db.file.findFirst({
     where: {
       id: fileid,
@@ -29,9 +38,50 @@ const Page = async ({ params }: PageProps) => {
     },
   });
 
-  console.log(file);
-
   if (!file) notFound();
+
+  const tempFilePath = path.join(process.cwd(), "temp", `${file.id}.pdf`);
+  fs.mkdirSync(path.dirname(tempFilePath), { recursive: true });
+  await downloadFile(file.url, tempFilePath);
+
+  const loader = new PDFLoader(tempFilePath);
+  const pageLevelDocs = await loader.load();
+
+  // Clean up temporary file
+  fs.unlinkSync(tempFilePath);
+
+  const pagesAmt = pageLevelDocs.length;
+  const { isSubscribed } = subscriptionPlan;
+
+  const isProExceeded =
+    pagesAmt > PLANS.find((plan) => plan.name === "Pro")!.pagesPerPdf;
+
+  const isFreeExceeded =
+    pagesAmt > PLANS.find((plan) => plan.name === "Free")!.pagesPerPdf;
+
+  const exceededLimit =
+    (isSubscribed && isProExceeded) || (!isSubscribed && isFreeExceeded);
+
+  // Update file status based on the current limit
+  if (exceededLimit && file.uploadStatus !== "FAILED") {
+    await db.file.update({
+      data: {
+        uploadStatus: "FAILED",
+      },
+      where: {
+        id: fileid,
+      },
+    });
+  } else if (!exceededLimit && file.uploadStatus === "FAILED") {
+    await db.file.update({
+      data: {
+        uploadStatus: "SUCCESS",
+      },
+      where: {
+        id: fileid,
+      },
+    });
+  }
 
   return (
     <div className="flex-1 justify-between flex flex-col h-[calc(100vh-3.5rem)]">
@@ -45,7 +95,10 @@ const Page = async ({ params }: PageProps) => {
         </div>
 
         <div className="shrink-0 flex-[0.75] border-t border-gray-200 lg:w-96 lg:border-l lg:border-t-0">
-          <ChatWrapper fileId={file.id} />
+          <ChatWrapper
+            fileId={file.id}
+            isSubscribed={!!subscriptionPlan?.isSubscribed}
+          />
         </div>
       </div>
     </div>

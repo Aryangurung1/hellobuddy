@@ -2,18 +2,13 @@
 
 import { ArrowRight } from "lucide-react";
 import { Button } from "./ui/button";
-import { trpc } from "@/app/_trpc/client";
+import { useRouter } from "next/navigation";
 
 const UpgradeButton = () => {
-  const { mutate: createStripeSession } = trpc.createStripeSession.useMutation({
-    onSuccess: ({ url }) => {
-      console.log("Stripe session URL 1st:", url);
-      window.location.href = url ?? "/dashboard/billing";
-    },
-  });
+  const router = useRouter();
 
   return (
-    <Button onClick={() => createStripeSession()} className="w-full">
+    <Button onClick={() => router.push("/payment-method")} className="w-full">
       Upgrade now <ArrowRight className="h-5 w-5 ml-1.5" />
     </Button>
   );
