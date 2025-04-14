@@ -35,6 +35,7 @@ export async function POST(request: Request) {
       session.subscription as string
     );
 
+    // Update user subscription details (existing functionality)
     await db.user.update({
       where: {
         id: session.metadata.userId,
@@ -48,6 +49,44 @@ export async function POST(request: Request) {
         ),
       },
     });
+
+    // NEW CODE: Create an invoice for the initial subscription payment
+    try {
+      // Get the price information
+      const priceId = subscription.items.data[0]?.price.id;
+      const priceInfo = priceId ? await stripe.prices.retrieve(priceId) : null;
+      const amount = priceInfo?.unit_amount
+        ? priceInfo.unit_amount / 100
+        : 29.99;
+
+      // Create a PAID invoice
+      await db.invoice.create({
+        data: {
+          amount,
+          currency: priceInfo?.currency?.toUpperCase() || "USD",
+          status: "PAID",
+          paymentMethod: "Stripe",
+          paymentId: session.id,
+          subscriptionPeriodStart: new Date(
+            subscription.current_period_start * 1000
+          ),
+          subscriptionPeriodEnd: new Date(
+            subscription.current_period_end * 1000
+          ),
+          description: `Initial subscription payment`,
+          userId: session.metadata.userId,
+          paidAt: new Date(),
+          metadata: {
+            checkoutSessionId: session.id,
+            subscriptionId: subscription.id,
+          },
+        },
+      });
+    } catch (invoiceError) {
+      console.error("Failed to create invoice:", invoiceError);
+      // Don't return an error - we still want the webhook to succeed
+      // even if invoice creation fails
+    }
   }
 
   if (event.type === "invoice.payment_succeeded") {
@@ -56,6 +95,7 @@ export async function POST(request: Request) {
       session.subscription as string
     );
 
+    // Update user subscription details (existing functionality)
     await db.user.update({
       where: {
         stripeSubscriptionId: subscription.id,
@@ -67,6 +107,50 @@ export async function POST(request: Request) {
         ),
       },
     });
+
+    // NEW CODE: Create an invoice for the renewal payment
+    try {
+      // Get the invoice details
+      const invoiceObject = event.data.object as Stripe.Invoice;
+
+      // Find the user associated with this subscription
+      const user = await db.user.findFirst({
+        where: {
+          stripeSubscriptionId: subscription.id,
+        },
+      });
+
+      if (user) {
+        // Create a PAID invoice for the renewal
+        await db.invoice.create({
+          data: {
+            amount: invoiceObject.amount_paid / 100, // Convert from cents to dollars
+            currency: invoiceObject.currency.toUpperCase(),
+            status: "PAID",
+            paymentMethod: "Stripe",
+            paymentId: invoiceObject.id,
+            subscriptionPeriodStart: new Date(
+              subscription.current_period_start * 1000
+            ),
+            subscriptionPeriodEnd: new Date(
+              subscription.current_period_end * 1000
+            ),
+            description: invoiceObject.description || "Subscription renewal",
+            userId: user.id,
+            paidAt: new Date(),
+            metadata: {
+              invoiceUrl: invoiceObject.hosted_invoice_url,
+              invoicePdf: invoiceObject.invoice_pdf,
+              subscriptionId: subscription.id,
+            },
+          },
+        });
+      }
+    } catch (invoiceError) {
+      console.error("Failed to create renewal invoice:", invoiceError);
+      // Don't return an error - we still want the webhook to succeed
+      // even if invoice creation fails
+    }
   }
 
   return new Response(null, { status: 200 });

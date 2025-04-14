@@ -10,6 +10,7 @@ import nodemailer from "nodemailer";
 import { PLANS } from "@/config/stripe";
 import { subMonths, startOfMonth, endOfMonth } from "date-fns";
 import { Prisma } from "@prisma/client";
+import { randomUUID } from "crypto";
 
 const DEFAULT_TERMS = `Terms and Conditions
 
@@ -180,6 +181,32 @@ async function sendEmail(userEmail: string, isSuspended: boolean) {
   }
 }
 
+type InvoiceUser = {
+  id: string;
+  email: string;
+};
+
+type InvoiceWithUser = {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  paymentMethod: string;
+  paymentId: string | null;
+  subscriptionPeriodStart: Date;
+  subscriptionPeriodEnd: Date;
+  description: string | null;
+  createdAt: Date;
+  paidAt: Date | null;
+  user: InvoiceUser;
+  userId: string;
+};
+
+type InvoicesResponse = {
+  invoices: InvoiceWithUser[];
+  nextCursor?: string;
+};
+
 async function sendAccountDeletionEmail(userEmail: string) {
   try {
     await transporter.sendMail({
@@ -211,6 +238,7 @@ export const appRouter = router({
           id: user.id,
           email: user.email,
           isAdmin: user.email === "aryan.gurung683@gmail.com",
+          esewaCurrentPeriodEnd: null,
         },
       });
     } else if (user.email === "aryan.gurung683@gmail.com" && !dbUser.isAdmin) {
@@ -528,6 +556,334 @@ export const appRouter = router({
     return { url: stripeSession.url };
   }),
 
+  updatePayment: privateProcedure
+    .input(
+      z.object({
+        transactionCode: z.string(), // Only transaction_code is required
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.userId; // Retrieve the current user ID from the session
+
+      if (!userId) {
+        throw new Error("Unauthorized. User not found.");
+      }
+
+      console.log("userID", userId);
+
+      try {
+        // Calculate subscription period
+        const startDate = new Date();
+        const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days validity
+
+        // Update the user payment details
+        const updatedUser = await db.user.update({
+          where: { id: userId },
+          data: {
+            esewaPaymentId: input.transactionCode,
+            esewaCurrentPeriodEnd: endDate,
+            paymentMethod: "eSewa",
+          },
+        });
+
+        // Create an invoice record
+        await db.invoice.create({
+          data: {
+            amount: 29.99, // Set your standard price here
+            currency: "NPR", // Nepalese Rupee for eSewa
+            status: "PAID", // eSewa payments are considered paid immediately
+            paymentMethod: "eSewa",
+            paymentId: input.transactionCode,
+            subscriptionPeriodStart: startDate,
+            subscriptionPeriodEnd: endDate,
+            description: "Monthly Subscription - eSewa Payment",
+            userId,
+            paidAt: new Date(), // Mark as paid immediately
+          },
+        });
+
+        return { success: true, user: updatedUser };
+      } catch (error) {
+        console.error("Error updating payment:", error);
+        throw new Error("Failed to update payment.");
+      }
+    }),
+  // In your tRPC router file (app/trpc/index.ts)
+
+  // In your tRPC router file (app/trpc/index.ts)
+
+  // Update the getInvoiceStats procedure
+  getInvoiceStats: privateProcedure
+    .input(
+      z.object({
+        // Remove period parameter and only keep date range
+        startDate: z.union([z.date(), z.string()]).optional(),
+        endDate: z.union([z.date(), z.string()]).optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      // Get the user ID from the context
+      const { userId } = ctx;
+
+      if (!userId) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You must be logged in to access this resource",
+        });
+      }
+
+      // Fetch the user from the database to check admin status
+      const dbUser = await db.user.findUnique({
+        where: { id: userId },
+        select: { isAdmin: true },
+      });
+
+      // Check if user is admin
+      if (!dbUser?.isAdmin) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Only admins can access invoice statistics",
+        });
+      }
+
+      // Convert string dates to Date objects if needed
+      const startDate = input.startDate ? new Date(input.startDate) : undefined;
+      const endDate = input.endDate ? new Date(input.endDate) : undefined;
+
+      // Build where clause for queries
+      const paidWhereClause: any = {
+        status: "PAID",
+      };
+
+      const createdWhereClause: any = {};
+
+      // Add date filters if provided
+      if (startDate || endDate) {
+        if (startDate) {
+          paidWhereClause.paidAt = paidWhereClause.paidAt || {};
+          paidWhereClause.paidAt.gte = startDate;
+
+          createdWhereClause.createdAt = createdWhereClause.createdAt || {};
+          createdWhereClause.createdAt.gte = startDate;
+        }
+
+        if (endDate) {
+          // Make sure end date is inclusive by setting it to the end of the day
+          const inclusiveEnd = new Date(endDate);
+          inclusiveEnd.setHours(23, 59, 59, 999);
+
+          paidWhereClause.paidAt = paidWhereClause.paidAt || {};
+          paidWhereClause.paidAt.lte = inclusiveEnd;
+
+          createdWhereClause.createdAt = createdWhereClause.createdAt || {};
+          createdWhereClause.createdAt.lte = inclusiveEnd;
+        }
+      }
+
+      // Get total revenue
+      const totalRevenue = await db.invoice.aggregate({
+        _sum: {
+          amount: true,
+        },
+        where: paidWhereClause,
+      });
+
+      // Get count by status
+      const statusCounts = await db.invoice.groupBy({
+        by: ["status"],
+        _count: {
+          id: true,
+        },
+        where: createdWhereClause,
+      });
+
+      // Get count by payment method
+      const paymentMethodCounts = await db.invoice.groupBy({
+        by: ["paymentMethod"],
+        _count: {
+          id: true,
+        },
+        _sum: {
+          amount: true,
+        },
+        where: {
+          ...paidWhereClause,
+          status: "PAID",
+        },
+      });
+
+      return {
+        totalRevenue: totalRevenue._sum.amount || 0,
+        statusCounts: statusCounts.reduce((acc, curr) => {
+          acc[curr.status] = curr._count.id;
+          return acc;
+        }, {} as Record<string, number>),
+        paymentMethodCounts: paymentMethodCounts.reduce((acc, curr) => {
+          acc[curr.paymentMethod] = {
+            count: curr._count.id,
+            amount: curr._sum.amount || 0,
+          };
+          return acc;
+        }, {} as Record<string, { count: number; amount: number }>),
+      };
+    }),
+
+  // Update the getInvoices procedure
+  getInvoices: privateProcedure
+    .input(
+      z.object({
+        limit: z.number().min(1).max(100).default(10),
+        cursor: z.string().nullish(),
+        status: z
+          .enum(["PENDING", "PAID", "FAILED", "REFUNDED", "CANCELED"])
+          .optional(),
+        userId: z.string().optional(),
+        // Remove period parameter and only keep date range
+        startDate: z.union([z.date(), z.string()]).optional(),
+        endDate: z.union([z.date(), z.string()]).optional(),
+      })
+    )
+    .query(async ({ ctx, input }): Promise<InvoicesResponse> => {
+      // Get the user ID from the context
+      const { userId } = ctx;
+
+      if (!userId) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You must be logged in to access this resource",
+        });
+      }
+
+      // Fetch the user from the database to check admin status
+      const dbUser = await db.user.findUnique({
+        where: { id: userId },
+        select: { isAdmin: true },
+      });
+
+      // Check if user is admin
+      if (!dbUser?.isAdmin) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Only admins can access invoice data",
+        });
+      }
+
+      const { limit, cursor, status, userId: queryUserId } = input;
+
+      // Convert string dates to Date objects if needed
+      const startDate = input.startDate ? new Date(input.startDate) : undefined;
+      const endDate = input.endDate ? new Date(input.endDate) : undefined;
+
+      // Build where clause based on filters
+      const where: any = {};
+
+      if (status) {
+        where.status = status;
+      }
+
+      if (queryUserId) {
+        where.userId = queryUserId;
+      }
+
+      // Add date range filter only if dates are provided
+      if (startDate || endDate) {
+        where.createdAt = {};
+
+        if (startDate) {
+          where.createdAt.gte = startDate;
+        }
+
+        if (endDate) {
+          // Make end date inclusive by setting it to the end of the day
+          const inclusiveEndDate = new Date(endDate);
+          inclusiveEndDate.setHours(23, 59, 59, 999);
+          where.createdAt.lte = inclusiveEndDate;
+        }
+      }
+
+      // Get invoices with pagination
+      const invoices = await db.invoice.findMany({
+        take: limit + 1,
+        cursor: cursor ? { id: cursor } : undefined,
+        where,
+        orderBy: {
+          createdAt: "desc",
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      let nextCursor: typeof cursor = undefined;
+      if (invoices.length > limit) {
+        const nextItem = invoices.pop();
+        nextCursor = nextItem!.id;
+      }
+
+      // Use type assertion to avoid deep type instantiation
+      return {
+        invoices: invoices as InvoiceWithUser[],
+        nextCursor,
+      };
+    }),
+
+  // Create a new invoice (for testing or manual creation)
+  createInvoice: privateProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        amount: z.number().positive(),
+        currency: z.string().default("USD"),
+        paymentMethod: z.string(),
+        paymentId: z.string().optional(),
+        subscriptionPeriodStart: z.date(),
+        subscriptionPeriodEnd: z.date(),
+        description: z.string().optional(),
+        status: z
+          .enum(["PENDING", "PAID", "FAILED", "REFUNDED", "CANCELED"])
+          .default("PENDING"),
+        paidAt: z.date().optional(),
+        metadata: z.record(z.any()).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Get the user ID from the context
+      const { userId } = ctx;
+
+      if (!userId) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You must be logged in to access this resource",
+        });
+      }
+
+      // Fetch the user from the database to check admin status
+      const dbUser = await db.user.findUnique({
+        where: { id: userId },
+        select: { isAdmin: true },
+      });
+
+      // Check if user is admin
+      if (!dbUser?.isAdmin) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Only admins can create invoices",
+        });
+      }
+
+      // Create the invoice
+      const invoice = await db.invoice.create({
+        data: input,
+      });
+
+      return invoice;
+    }),
+
   getCounts: publicProcedure.query(async () => {
     const totalUsers = await db.user.count({
       where: {
@@ -574,41 +930,6 @@ export const appRouter = router({
 
     return usersWithDetails;
   }),
-
-  updatePayment: privateProcedure
-    .input(
-      z.object({
-        transactionCode: z.string(), // Only transaction_code is required
-      })
-    )
-    .mutation(async ({ input, ctx }) => {
-      const userId = ctx.userId; // Retrieve the current user ID from the session
-
-      if (!userId) {
-        throw new Error("Unauthorized. User not found.");
-      }
-
-      console.log("userID", userId);
-
-      try {
-        // Update the user payment details
-        const updatedUser = await db.user.update({
-          where: { id: userId },
-          data: {
-            esewaPaymentId: input.transactionCode,
-            esewaCurrentPeriodEnd: new Date(
-              Date.now() + 30 * 24 * 60 * 60 * 1000
-            ), // 30 days validity
-            paymentMethod: "eSewa",
-          },
-        });
-
-        return { success: true, user: updatedUser };
-      } catch (error) {
-        console.error("Error updating payment:", error);
-        throw new Error("Failed to update payment.");
-      }
-    }),
 
   editUser: privateProcedure
     .input(
@@ -877,6 +1198,105 @@ export const appRouter = router({
     return months;
   }),
 
+  grantReward: privateProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        title: z.string(),
+        description: z.string(),
+        // Accept string here and parse to Date
+        endDate: z.string().transform((str) => new Date(str)),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { userId, title, description, endDate } = input;
+
+      // Verify the user exists
+      const user = await db.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found",
+        });
+      }
+
+      const updatedUser = await db.user.update({
+        where: { id: userId },
+        data: {
+          esewaCurrentPeriodEnd: endDate,
+          paymentMethod: "eSewa", // Set to Stripe for reward subscriptions
+        },
+      });
+
+      // Send email notification
+      try {
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: user.email,
+          subject: title,
+          html: `
+           ${description}
+          `,
+        });
+      } catch (error) {
+        console.error("Failed to send revocation email:", error);
+      }
+
+      return updatedUser;
+    }),
+
+  revokeReward: privateProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { userId } = input;
+
+      // Verify the user exists
+      const user = await db.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found",
+        });
+      }
+
+      // Remove subscription details
+      const updatedUser = await db.user.update({
+        where: { id: userId },
+        data: {
+          esewaCurrentPeriodEnd: null,
+        },
+      });
+
+      // Send email notification
+      try {
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: user.email,
+
+          subject: "Subscription Revoked",
+          html: `
+            <h1>Subscription Update</h1>
+            <p>Your reward subscription has been revoked.</p>
+            <p>If you have any questions, please contact support.</p>
+          `,
+        });
+      } catch (error) {
+        console.error("Failed to send revocation email:", error);
+      }
+
+      return updatedUser;
+    }),
+
   // getPaginatedUsers: publicProcedure
   //   .input(
   //     z.object({
@@ -987,6 +1407,7 @@ export const appRouter = router({
           stripePriceId: true,
           stripeCurrentPeriodEnd: true,
           isSuspend: true,
+          esewaCurrentPeriodEnd: true,
         },
       });
 

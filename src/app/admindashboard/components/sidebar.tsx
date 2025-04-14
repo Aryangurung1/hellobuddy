@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, LogOut, FileText } from "lucide-react";
+import {
+  LayoutDashboard,
+  Users,
+  Receipt,
+  LogOut,
+  FileText,
+} from "lucide-react";
 import { LogoutLink } from "@kinde-oss/kinde-auth-nextjs/components";
 
 import { cn } from "@/lib/utils";
@@ -26,6 +32,11 @@ export function Sidebar() {
       label: "Terms & Conditions",
       icon: FileText,
       href: "/admindashboard/terms",
+    },
+    {
+      label: "Invoices",
+      icon: Receipt,
+      href: "/admindashboard/invoices",
     },
   ];
 

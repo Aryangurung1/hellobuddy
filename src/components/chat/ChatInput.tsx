@@ -1,3 +1,4 @@
+"use client"; // Only needed if using Next.js App Router
 import "regenerator-runtime/runtime";
 import { Send, Mic } from "lucide-react";
 import { Button } from "../ui/button";
@@ -16,12 +17,22 @@ const ChatInput = ({ isDisabled }: ChatInputProps) => {
   const { addMessage, handleInputChange, isLoading, message, setMessage } =
     useContext(ChatContext);
 
-  const { transcript, listening, resetTranscript } = useSpeechRecognition();
+  const {
+    transcript,
+    listening,
+    resetTranscript,
+    browserSupportsSpeechRecognition,
+  } = useSpeechRecognition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [lastTranscript, setLastTranscript] = useState(""); // Track the last processed transcript
 
   useEffect(() => {
-    // Only update the message with new transcript content
+    if (!browserSupportsSpeechRecognition) {
+      console.error("Speech Recognition is not supported in this browser.");
+    }
+  }, [browserSupportsSpeechRecognition]);
+
+  useEffect(() => {
     if (transcript && transcript !== lastTranscript) {
       const newText = transcript.replace(lastTranscript, ""); // Remove already processed transcript
       setMessage((prevMessage: string) => prevMessage + newText); // Append only new transcript
@@ -29,19 +40,27 @@ const ChatInput = ({ isDisabled }: ChatInputProps) => {
     }
   }, [transcript, lastTranscript, setMessage]);
 
-  const startListening = () => {
-    resetTranscript(); // Clear previous transcript before starting new session
-    setLastTranscript("");
-    SpeechRecognition.startListening({ continuous: true });
+  const startListening = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true }); // Request microphone access
+      resetTranscript(); // Clear previous transcript before starting new session
+      setLastTranscript("");
+      SpeechRecognition.startListening({
+        continuous: true,
+        interimResults: true,
+      });
+    } catch (error) {
+      console.error("Microphone access denied:", error);
+    }
   };
 
   const stopListening = () => {
     SpeechRecognition.stopListening();
-    resetTranscript(); // Optional: Reset after every session
     setLastTranscript(""); // Clear last transcript when stopping
 
     if (message.trim() !== "") {
-      addMessage(); // Clear the message after sending
+      addMessage(); // Send the message
+      setMessage(""); // Clear input
       textareaRef.current?.focus(); // Refocus on the textarea
     }
   };
@@ -50,7 +69,7 @@ const ChatInput = ({ isDisabled }: ChatInputProps) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       addMessage();
-      // Clear the message after sending
+      setMessage(""); // Clear input after sending
       textareaRef.current?.focus(); // Refocus on the textarea
     }
   };
@@ -71,12 +90,13 @@ const ChatInput = ({ isDisabled }: ChatInputProps) => {
                 onKeyDown={handleKeyDown}
                 placeholder="Enter your question or press the mic..."
                 className="resize-none pr-32 text-base py-3 scrollbar-thumb-blue scrollbar-thumb-rounded scrollbar-track-blue-lighter scrollbar-w-2 scrolling-touch overflow-auto"
-                // overflow-auto ensures the textarea expands upwards without overflowing
               />
 
               <div className="absolute bottom-1.5 right-[8px] flex space-x-2">
                 <Button
-                  disabled={isLoading || isDisabled}
+                  disabled={
+                    isLoading || isDisabled || !browserSupportsSpeechRecognition
+                  }
                   className={`${listening ? "bg-red-500" : ""}`} // Change mic color to red when listening
                   aria-label="record message"
                   onMouseDown={startListening}
