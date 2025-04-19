@@ -1,4 +1,5 @@
-import { getUserSubscriptionPlan } from "@/lib/stripe";
+"use client";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,18 +10,27 @@ import {
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import Link from "next/link";
-import { Gem } from "lucide-react";
-import { LogoutLink } from "@kinde-oss/kinde-auth-nextjs/server";
+import { Gem, Loader2 } from "lucide-react";
+import { LogoutLink } from "@kinde-oss/kinde-auth-nextjs";
 import { Icons } from "./Icons";
-import Image from "next/image";
+import { trpc } from "@/app/_trpc/client";
 
 interface UserAccountNavProps {
   email: string | undefined;
   name: string;
+  isLoading?: boolean;
 }
 
-const UserAccountNav = async ({ email, name }: UserAccountNavProps) => {
-  const subscriptionPlan = await getUserSubscriptionPlan();
+const UserAccountNav = ({ email, name, isLoading }: UserAccountNavProps) => {
+  const { data: subscriptionPlan } = trpc.getUserSubscriptionPlan.useQuery();
+
+  if (isLoading) {
+    return (
+      <Button className="rounded-full h-8 w-8 aspect-square bg-slate-400" disabled>
+        <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
+      </Button>
+    );
+  }
 
   return (
     <DropdownMenu>
@@ -64,6 +74,10 @@ const UserAccountNav = async ({ email, name }: UserAccountNavProps) => {
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
+
+        <DropdownMenuItem asChild>
+          <Link href="/profile">My Profile</Link>
+        </DropdownMenuItem>
 
         <DropdownMenuItem className="cursor-pointer" asChild>
           <LogoutLink>Log out</LogoutLink>

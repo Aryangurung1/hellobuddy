@@ -220,6 +220,9 @@ async function sendAccountDeletionEmail(userEmail: string) {
   }
 }
 
+// Add this with your other temporary storage (near the top of the file)
+const imageChunkStore: { [key: string]: string[] } = {};
+
 export const appRouter = router({
   authCallback: publicProcedure.query(async () => {
     const { getUser } = getKindeServerSession();
@@ -262,6 +265,19 @@ export const appRouter = router({
     return db.user.findUnique({
       where: { id: ctx.userId },
     });
+  }),
+
+  getCurrentUserFromKinde: privateProcedure.query(async ({ ctx }) => {
+    const kindeUser = await fetchUserFromKindeByEmail(ctx.userId);
+    if (!kindeUser) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "User not found in Kinde" });
+    }
+    return {
+      given_name: kindeUser.first_name || '',
+      family_name: kindeUser.last_name || '',
+      email: kindeUser.email || '',
+      picture: kindeUser.picture || null
+    };
   }),
 
   getUserTermsStatus: privateProcedure.query(async ({ ctx }) => {
@@ -1474,6 +1490,108 @@ export const appRouter = router({
       });
       return file;
     }),
+
+  updateUserImage: privateProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        imageChunk: z.string(),
+        chunkIndex: z.number(),
+        totalChunks: z.number(),
+        isLastChunk: z.boolean(),
+        fileName: z.string(),
+        fileType: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { userId, imageChunk, chunkIndex, totalChunks, isLastChunk, fileType } = input;
+
+      // Initialize chunk array for this user if it doesn't exist
+      if (!imageChunkStore[userId]) {
+        imageChunkStore[userId] = new Array(totalChunks);
+      }
+
+      // Store the chunk
+      imageChunkStore[userId][chunkIndex] = imageChunk;
+
+      // If this is the last chunk, process the complete image
+      if (isLastChunk) {
+        try {
+          // Combine all chunks
+          const completeImageBase64 = imageChunkStore[userId].join('');
+          
+          // Convert base64 to Buffer
+          const imageBuffer = Buffer.from(completeImageBase64, 'base64');
+
+          // Create a unique filename
+          const timestamp = Date.now();
+          const uniqueFilename = `${userId}-${timestamp}.${fileType.split('/')[1]}`;
+
+          // Here you would typically upload the image to your storage service
+          // For this example, we'll assume it's stored locally in a public directory
+          // In a real application, you'd want to use a proper storage service like S3
+          
+          // For now, we'll just store the base64 string in the database
+          const imageUrl = `data:${fileType};base64,${completeImageBase64}`;
+
+          // Update user's image in database
+          await db.user.update({
+            where: { id: userId },
+            data: { image: imageUrl },
+          });
+
+          // Clean up the chunks
+          delete imageChunkStore[userId];
+
+          return { success: true };
+        } catch (error) {
+          // Clean up on error
+          delete imageChunkStore[userId];
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to process image',
+          });
+        }
+      }
+
+      return { success: true };
+    }),
+
+  getUserSubscriptionPlan: privateProcedure.query(async ({ ctx }) => {
+    const { userId } = ctx;
+
+    const user = await db.user.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        stripeSubscriptionId: true,
+        stripePriceId: true,
+        stripeCustomerId: true,
+        stripeCurrentPeriodEnd: true,
+        esewaCurrentPeriodEnd: true,
+      },
+    });
+
+    if (!user) {
+      throw new TRPCError({ code: "NOT_FOUND" });
+    }
+
+    const isSubscribed =
+      !!user.stripeCurrentPeriodEnd &&
+      user.stripeCurrentPeriodEnd.getTime() + 86_400_000 > Date.now() ||
+      !!user.esewaCurrentPeriodEnd &&
+      user.esewaCurrentPeriodEnd.getTime() + 86_400_000 > Date.now();
+
+    return {
+      isSubscribed,
+      stripeSubscriptionId: user.stripeSubscriptionId,
+      stripePriceId: user.stripePriceId,
+      stripeCustomerId: user.stripeCustomerId,
+      stripeCurrentPeriodEnd: user.stripeCurrentPeriodEnd,
+      esewaCurrentPeriodEnd: user.esewaCurrentPeriodEnd,
+    };
+  }),
 });
 
 export type AppRouter = typeof appRouter;

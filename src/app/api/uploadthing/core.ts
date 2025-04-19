@@ -124,6 +124,26 @@ export const ourFileRouter = {
   proPlanUploader: f({ pdf: { maxFileSize: "16MB" } })
     .middleware(middleware)
     .onUploadComplete(onUploadComplete),
+
+  profileImage: f({
+    image: {
+      maxFileSize: "4MB",
+      maxFileCount: 1
+    }
+  })
+    .middleware(async ({ req }) => {
+      const { getUser } = getKindeServerSession();
+      const user = await getUser();
+      if (!user || !user.id) throw new Error("Unauthorized");
+      return { userId: user.id };
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      await db.user.update({
+        where: { id: metadata.userId },
+        data: { image: file.url }
+      });
+      return { success: true };
+    })
 } satisfies FileRouter;
 
 export type OurFileRouter = typeof ourFileRouter;
