@@ -10,11 +10,13 @@ import fs from "fs";
 import path from "path";
 import axios from "axios";
 
-interface PageProps {
-  params: {
+// Fixed type definition to match Next.js expectations
+type PageProps = {
+  params: Promise<{
     fileid: string;
-  };
-}
+  }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
 
 const downloadFile = async (url: string, localPath: string) => {
   const response = await axios.get(url, { responseType: "arraybuffer" });
@@ -23,7 +25,7 @@ const downloadFile = async (url: string, localPath: string) => {
 
 const Page = async ({ params }: PageProps) => {
   //retrive the file id
-  const { fileid } = params;
+  const { fileid } = await params;
   const subscriptionPlan = await getUserSubscriptionPlan();
 
   const { getUser } = getKindeServerSession();
@@ -87,7 +89,6 @@ const Page = async ({ params }: PageProps) => {
     <div className="flex-1 justify-between flex flex-col h-[calc(100vh-3.5rem)]">
       <div className="mx-auto w-full max-w-8xl grow lg:flex xl:px-2">
         {/* left side */}
-
         <div className="flex-1 xl:flex">
           <div className="px-4 py-6 sm:px-6 lg:pl-8 xl:flex-1 xl:pl-6">
             <PdfRenderer url={file.url} />

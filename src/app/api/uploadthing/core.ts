@@ -104,7 +104,8 @@ const onUploadComplete = async ({
         id: createdFile.id,
       },
     });
-  } catch (err) {
+  } catch (error) {
+    console.log("error", error);
     await db.file.update({
       data: {
         uploadStatus: "FAILED",
@@ -131,7 +132,7 @@ export const ourFileRouter = {
       maxFileCount: 1
     }
   })
-    .middleware(async ({ req }) => {
+    .middleware(async () => {
       const { getUser } = getKindeServerSession();
       const user = await getUser();
       if (!user || !user.id) throw new Error("Unauthorized");

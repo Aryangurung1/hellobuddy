@@ -109,7 +109,7 @@ export function PDFManager({
                   No PDFs Found
                 </p>
                 <p className="text-sm text-gray-500 text-center mt-2">
-                  This user hasn't uploaded any PDFs yet.
+                  This user hasn&apos;t uploaded any PDFs yet.
                 </p>
               </div>
             )}

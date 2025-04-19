@@ -17,6 +17,22 @@ interface RevenuePieChartProps {
   dateRange?: DateRange;
 }
 
+// Define the shape of our chart data items
+interface ChartDataItem {
+  name: string;
+  value: number;
+  currency: string;
+  count: number;
+}
+
+// Define custom tooltip props interface
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    payload: ChartDataItem;
+  }>;
+}
+
 export default function RevenuePieChart({ dateRange }: RevenuePieChartProps) {
   // Fetch invoice statistics with date range
   const { data, isLoading } = trpc.getInvoiceStats.useQuery({
@@ -39,7 +55,7 @@ export default function RevenuePieChart({ dateRange }: RevenuePieChartProps) {
   const prepareChartData = () => {
     if (!data?.paymentMethodCounts) return [];
 
-    const chartData = [];
+    const chartData: ChartDataItem[] = [];
 
     // Add Stripe data (USD)
     if (data.paymentMethodCounts.Stripe) {
@@ -67,7 +83,7 @@ export default function RevenuePieChart({ dateRange }: RevenuePieChartProps) {
   const chartData = prepareChartData();
 
   // Custom tooltip for the pie chart
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (

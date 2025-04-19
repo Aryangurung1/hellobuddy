@@ -1,9 +1,32 @@
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
 import { Invoice } from "../types/invoice";
+
+// Define proper type for autoTable options
+interface AutoTableOptions {
+  startY?: number;
+  head?: string[][];
+  body?: (string | number)[][];
+  theme?: 'striped' | 'grid' | 'plain';
+  headStyles?: {
+    fillColor?: number[];
+    textColor?: number[];
+    fontStyle?: string;
+    fontSize?: number;
+  };
+  styles?: {
+    fontSize?: number;
+    font?: string;
+    textColor?: number[];
+    cellPadding?: number;
+  };
+  margin?: { top?: number; right?: number; bottom?: number; left?: number };
+}
+
+// Update module declaration with proper type
 declare module "jspdf" {
   interface jsPDF {
-    autoTable: (options: any) => jsPDF;
+    autoTable: (options: AutoTableOptions) => jsPDF;
   }
 }
 
@@ -17,7 +40,7 @@ export function generatePDFFile(invoice: Invoice, fileName: string) {
 
   // Add invoice details
   doc.setFontSize(12);
-  const details = [
+  const details: [string, string][] = [
     ["Invoice ID:", invoice.id],
     ["Customer:", invoice.user.email],
     ["Amount:", `${invoice.currency} ${invoice.amount}`],

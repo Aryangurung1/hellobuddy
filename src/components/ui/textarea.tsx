@@ -5,8 +5,8 @@ import TextareaAutosize, {
 
 import { cn } from "@/lib/utils";
 
-export interface TextareaProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
+// Using type alias instead of empty interface to avoid TypeScript error
+type TextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
 
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaAutosizeProps>(
   ({ className, ...props }, ref) => {
@@ -24,4 +24,4 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaAutosizeProps>(
 );
 Textarea.displayName = "Textarea";
 
-export { Textarea };
+export { Textarea, type TextareaProps };

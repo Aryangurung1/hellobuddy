@@ -3,6 +3,7 @@
 "use client";
 
 import { useState } from "react";
+import type { Invoice } from "@/types/invoice";
 import {
   Card,
   CardContent,
@@ -48,6 +49,8 @@ import {
 import { generateExcelFile } from "@/lib/generate-excel";
 import { generatePDFFile } from "@/lib/generate-pdf";
 import type { DateRange } from "react-day-picker";
+
+
 
 export default function InvoicesPage() {
   const [currentPage, setCurrentPage] = useState(0);
@@ -112,7 +115,7 @@ export default function InvoicesPage() {
   };
 
   // Function to download invoice as PDF
-  const downloadPDF = (invoice: any) => {
+  const downloadPDF = (invoice: Invoice) => {
     try {
       generatePDFFile(invoice, `invoice-${invoice.id}`);
     } catch (error) {
@@ -122,7 +125,7 @@ export default function InvoicesPage() {
   };
 
   // Function to download invoice as Excel
-  const downloadExcel = (invoice: any) => {
+  const downloadExcel = (invoice: Invoice) => {
     try {
       generateExcelFile([invoice], `invoice-${invoice.id}`);
     } catch (error) {

@@ -53,9 +53,8 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "../_trpc/client";
 import { Loader2 } from "lucide-react";
-import { useEffect, Suspense, useState } from "react";
+import { useEffect, Suspense } from "react";
 import { toast } from "react-hot-toast"; // Importing toast
-import { TermsAndConditionsDialog } from "@/components/TermsAndConditionsDialog";
 
 const AuthCallback = () => {
   const router = useRouter();

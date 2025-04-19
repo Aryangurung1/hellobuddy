@@ -8,19 +8,37 @@ import { trpc } from "@/app/_trpc/client";
 import { toast } from "react-hot-toast";
 import Skeleton from "react-loading-skeleton";
 
+interface SubscriptionPlan {
+  stripeSubscriptionId: string | null;
+  stripeCurrentPeriodEnd: Date | null;
+  stripeCustomerId: string | null;
+  isSubscribed: boolean;
+  isCanceled: boolean;
+  name: string;
+  slug: string;
+  quota: number;
+  pagesPerPdf: number;
+  price: {
+    amount: number;
+    priceIds: {
+      test: string;
+      production: string;
+    };
+  };
+}
+
 interface DashboardWrapperProps {
-  subscriptionPlan: any; // Replace 'any' with the actual type of subscriptionPlan
+  subscriptionPlan: SubscriptionPlan; // Replace 'any' with the actual type of subscriptionPlan
   userId: string;
 }
 
 const DashboardWrapper: React.FC<DashboardWrapperProps> = ({
   subscriptionPlan,
-  userId,
 }) => {
   const [showTerms, setShowTerms] = useState(false);
-  const [termsContent, setTermsContent] = useState("");
+  const [showTermsContent, setTermsContent] = useState("");
   const router = useRouter();
-
+console.log(showTermsContent);
   const { data: userTermsStatus, isLoading } =
     trpc.getUserTermsStatus.useQuery();
   const { data: termsAndConditions } = trpc.getTermsAndConditions.useQuery();

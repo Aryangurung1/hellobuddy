@@ -10,7 +10,30 @@ import nodemailer from "nodemailer";
 import { PLANS } from "@/config/stripe";
 import { subMonths, startOfMonth, endOfMonth } from "date-fns";
 import { Prisma } from "@prisma/client";
-import { randomUUID } from "crypto";
+
+// Define more specific types for queries
+type DateFilter = {
+  gte?: Date;
+  lte?: Date;
+};
+
+interface WhereClause {
+  status?: "PENDING" | "PAID" | "FAILED" | "REFUNDED" | "CANCELED";
+  paidAt?: DateFilter;
+  createdAt?: DateFilter;
+  userId?: string;
+}
+
+// Additional interfaces for image upload
+// interface ImageChunkData {
+//   userId: string;
+//   imageChunk: string;
+//   chunkIndex: number;
+//   totalChunks: number;
+//   isLastChunk: boolean;
+//   fileName: string;
+//   fileType: string;
+// }
 
 const DEFAULT_TERMS = `Terms and Conditions
 
@@ -294,7 +317,7 @@ export const appRouter = router({
   }),
 
   getTermsAndConditions: publicProcedure.query(async () => {
-    let terms = await db.termsAndConditions.findFirst({
+    const terms = await db.termsAndConditions.findFirst({
       where: { isActive: true },
       orderBy: { createdAt: "desc" },
     });
@@ -323,7 +346,7 @@ export const appRouter = router({
     return { success: true };
   }),
 
-  rejectTermsAndConditions: privateProcedure.mutation(async ({ ctx }) => {
+  rejectTermsAndConditions: privateProcedure.mutation(async () => {
     // const { userId } = ctx;
 
     // Delete the user's data
@@ -624,11 +647,8 @@ export const appRouter = router({
         throw new Error("Failed to update payment.");
       }
     }),
-  // In your tRPC router file (app/trpc/index.ts)
 
   // In your tRPC router file (app/trpc/index.ts)
-
-  // Update the getInvoiceStats procedure
   getInvoiceStats: privateProcedure
     .input(
       z.object({
@@ -667,11 +687,11 @@ export const appRouter = router({
       const endDate = input.endDate ? new Date(input.endDate) : undefined;
 
       // Build where clause for queries
-      const paidWhereClause: any = {
+      const paidWhereClause: WhereClause = {
         status: "PAID",
       };
 
-      const createdWhereClause: any = {};
+      const createdWhereClause: WhereClause = {};
 
       // Add date filters if provided
       if (startDate || endDate) {
@@ -726,12 +746,13 @@ export const appRouter = router({
           ...paidWhereClause,
           status: "PAID",
         },
-      });
+        });
 
       return {
-        totalRevenue: totalRevenue._sum.amount || 0,
+        totalRevenue: totalRevenue?._sum?.amount || 0,
         statusCounts: statusCounts.reduce((acc, curr) => {
-          acc[curr.status] = curr._count.id;
+          const count = typeof curr._count === 'object' && curr._count?.id ? curr._count.id : 0;
+          acc[curr.status] = count;
           return acc;
         }, {} as Record<string, number>),
         paymentMethodCounts: paymentMethodCounts.reduce((acc, curr) => {
@@ -791,7 +812,7 @@ export const appRouter = router({
       const endDate = input.endDate ? new Date(input.endDate) : undefined;
 
       // Build where clause based on filters
-      const where: any = {};
+      const where: WhereClause = {};
 
       if (status) {
         where.status = status;
@@ -922,7 +943,7 @@ export const appRouter = router({
     };
   }),
 
-  getAllUsers: privateProcedure.query(async ({ ctx }) => {
+  getAllUsers: privateProcedure.query(async () => {
     // Fetch all non-admin users from Prisma (your database)
     const users = await db.user.findMany({
       where: { isAdmin: false },
@@ -1101,7 +1122,7 @@ export const appRouter = router({
         });
       }
 
-      // Suspend the user in Prisma database
+      // Unsuspend the user in Prisma database
       const updatedUser = await db.user.update({
         where: { id: id },
         data: { isSuspend: false },
@@ -1224,7 +1245,7 @@ export const appRouter = router({
         endDate: z.string().transform((str) => new Date(str)),
       })
     )
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ input }) => {
       const { userId, title, description, endDate } = input;
 
       // Verify the user exists
@@ -1257,8 +1278,8 @@ export const appRouter = router({
            ${description}
           `,
         });
-      } catch (error) {
-        console.error("Failed to send revocation email:", error);
+      } catch (emailError) {
+        console.error("Failed to send reward email:", emailError);
       }
 
       return updatedUser;
@@ -1270,7 +1291,7 @@ export const appRouter = router({
         userId: z.string(),
       })
     )
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ input }) => {
       const { userId } = input;
 
       // Verify the user exists
@@ -1298,7 +1319,6 @@ export const appRouter = router({
         await transporter.sendMail({
           from: process.env.EMAIL_USER,
           to: user.email,
-
           subject: "Subscription Revoked",
           html: `
             <h1>Subscription Update</h1>
@@ -1306,95 +1326,13 @@ export const appRouter = router({
             <p>If you have any questions, please contact support.</p>
           `,
         });
-      } catch (error) {
-        console.error("Failed to send revocation email:", error);
+      } catch (emailError) {
+        console.error("Failed to send revocation email:", emailError);
       }
 
       return updatedUser;
     }),
 
-  // getPaginatedUsers: publicProcedure
-  //   .input(
-  //     z.object({
-  //       page: z.number().int().positive(),
-  //       limit: z.number().int().positive(),
-  //       searchTerm: z.string().optional(),
-  //     })
-  //   )
-  //   .query(async ({ input }) => {
-  //     const { page, limit, searchTerm } = input;
-  //     const skip = (page - 1) * limit;
-
-  //     let where: Prisma.UserWhereInput = {
-  //       isAdmin: false, // Exclude admin users
-  //     };
-
-  //     // if (searchTerm) {
-  //     //   where = {
-  //     //     ...where,
-  //     //     OR: [
-  //     //       { email: { contains: searchTerm, mode: "insensitive" } },
-  //     //       {
-  //     //         isSuspend:
-  //     //           searchTerm.toLowerCase() === "suspended"
-  //     //             ? true
-  //     //             : searchTerm.toLowerCase() === "active"
-  //     //             ? false
-  //     //             : undefined,
-  //     //       },
-  //     //     ],
-  //     //   };
-  //     // }
-
-  //     const allUsers = await db.user.findMany({
-  //       where,
-  //       orderBy: { createdAt: "desc" },
-  //       skip,
-  //       take: limit,
-  //       select: {
-  //         id: true,
-  //         email: true,
-  //         stripeCustomerId: true,
-  //         stripeSubscriptionId: true,
-  //         stripePriceId: true,
-  //         stripeCurrentPeriodEnd: true,
-  //         isSuspend: true,
-  //       },
-  //     });
-
-  //     const usersWithDetails = await Promise.all(
-  //       allUsers.map(async (user) => {
-  //         const kindeUser = await fetchUserFromKindeByEmail(user.id);
-  //         const fullName = kindeUser
-  //           ? `${kindeUser.first_name} ${kindeUser.last_name}`
-  //           : "No Name";
-
-  //         return {
-  //           ...user,
-  //           name: fullName,
-  //         };
-  //       })
-  //     );
-
-  //     let filteredUsers = usersWithDetails;
-
-  //     if (searchTerm) {
-  //       const lowerSearchTerm = searchTerm.toLowerCase();
-  //       filteredUsers = usersWithDetails.filter(
-  //         (user) =>
-  //           user.name.toLowerCase().includes(lowerSearchTerm) ||
-  //           user.email.toLowerCase().includes(lowerSearchTerm) ||
-  //           (user.isSuspend ? "suspended" : "active").includes(lowerSearchTerm)
-  //       );
-  //     }
-
-  //     const paginatedUsers = filteredUsers.slice(skip, skip + limit);
-
-  //     return {
-  //       users: paginatedUsers,
-  //       total: filteredUsers.length,
-  //     };
-  //   }),
   getPaginatedUsers: publicProcedure
     .input(
       z.object({
@@ -1407,7 +1345,7 @@ export const appRouter = router({
       const { page, limit, searchTerm } = input;
       const skip = (page - 1) * limit;
 
-      let where: Prisma.UserWhereInput = {
+      const where: Prisma.UserWhereInput = {
         isAdmin: false, // Exclude admin users
       };
 
@@ -1465,7 +1403,7 @@ export const appRouter = router({
 
   getUserPDFs: privateProcedure
     .input(z.object({ userId: z.string() }))
-    .query(async ({ ctx, input }) => {
+    .query(async ({ input }) => {
       const files = await db.file.findMany({
         where: {
           userId: input.userId,
@@ -1482,7 +1420,7 @@ export const appRouter = router({
 
   deletePDF: privateProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ input }) => {
       const file = await db.file.delete({
         where: {
           id: input.id,
@@ -1503,7 +1441,7 @@ export const appRouter = router({
         fileType: z.string(),
       })
     )
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ input }) => {
       const { userId, imageChunk, chunkIndex, totalChunks, isLastChunk, fileType } = input;
 
       // Initialize chunk array for this user if it doesn't exist
@@ -1520,12 +1458,12 @@ export const appRouter = router({
           // Combine all chunks
           const completeImageBase64 = imageChunkStore[userId].join('');
           
-          // Convert base64 to Buffer
-          const imageBuffer = Buffer.from(completeImageBase64, 'base64');
+          // Convert base64 to Buffer for future use if needed
+          // const imageBuffer = Buffer.from(completeImageBase64, 'base64');
 
-          // Create a unique filename
-          const timestamp = Date.now();
-          const uniqueFilename = `${userId}-${timestamp}.${fileType.split('/')[1]}`;
+          // Create a unique filename for future use if needed
+          // const timestamp = Date.now();
+          // const uniqueFilename = `${userId}-${timestamp}.${fileType.split('/')[1]}`;
 
           // Here you would typically upload the image to your storage service
           // For this example, we'll assume it's stored locally in a public directory
@@ -1544,9 +1482,10 @@ export const appRouter = router({
           delete imageChunkStore[userId];
 
           return { success: true };
-        } catch (error) {
+        } catch (uploadError) {
           // Clean up on error
           delete imageChunkStore[userId];
+          console.error("Image upload error:", uploadError);
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
             message: 'Failed to process image',

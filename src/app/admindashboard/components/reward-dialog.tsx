@@ -36,7 +36,6 @@ interface RewardData {
 export default function RewardDialog({
   open,
   onOpenChange,
-  userId,
   userEmail,
   onSubmit,
   isSubscribed,

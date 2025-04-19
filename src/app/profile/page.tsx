@@ -126,6 +126,7 @@ export default function ProfilePage() {
         setUploadProgress((uploadedChunks / totalChunks) * 100);
       }
     } catch (error) {
+      console.log(error);
       toast({
         title: "Error",
         description: "Failed to upload image",
@@ -146,7 +147,7 @@ export default function ProfilePage() {
     const nameParts = newName.trim().split(' ');
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ');
-    
+    console.log(firstName, lastName);
     // Update name in Kinde through our tRPC mutation
     editUser({
       id: user.id,

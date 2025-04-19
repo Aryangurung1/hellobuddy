@@ -4,30 +4,17 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Line, LineChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
-import { Users, UserCheck, UserX, Calendar } from "lucide-react";
+import { Users, UserCheck, UserX } from "lucide-react";
 import { trpc } from "@/app/_trpc/client";
 import Skeleton from "react-loading-skeleton";
 import RevenuePieChart from "./revenue-pie-chart";
 import type { DateRange } from "react-day-picker";
-import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { format } from "date-fns";
-import { DatePickerWithRange } from "@/components/ui/date-range-picker";
-import { X } from "lucide-react";
 
 export default function DashboardContent() {
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  // Using destructuring syntax with just the first element to avoid the unused variable warning
+  const [dateRange] = useState<DateRange | undefined>(undefined);
   const { data, isLoading } = trpc.getCounts.useQuery();
   const { data: dataUser } = trpc.getUserGrowth.useQuery();
-
-  // Handle date range change
-  const handleDateRangeChange = (range: DateRange | undefined) => {
-    setDateRange(range);
-  };
 
   if (isLoading) {
     return <Skeleton height={100} className="my-2" count={3} />;
@@ -123,7 +110,18 @@ export default function DashboardContent() {
   );
 }
 
-function CustomTooltip({ active, payload, label }: any) {
+// Fix 2: Replace 'any' with proper types for the tooltip props
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    value: number;
+    dataKey: string;
+    name: string;
+  }>;
+  label?: string;
+}
+
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (active && payload && payload.length) {
     return (
       <div className="bg-white p-4 border rounded shadow">

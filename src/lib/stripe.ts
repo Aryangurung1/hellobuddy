@@ -15,6 +15,8 @@ export async function getUserSubscriptionPlan() {
   if (!user.id) {
     return {
       ...PLANS[0],
+      stripeSubscriptionId: null,
+      stripeCustomerId: null,
       isSubscribed: false,
       isCanceled: false,
       stripeCurrentPeriodEnd: null,
@@ -30,6 +32,8 @@ export async function getUserSubscriptionPlan() {
   if (!dbUser) {
     return {
       ...PLANS[0],
+      stripeSubscriptionId: null,
+      stripeCustomerId: null,
       isSubscribed: false,
       isCanceled: false,
       stripeCurrentPeriodEnd: null,
@@ -64,7 +68,7 @@ export async function getUserSubscriptionPlan() {
   }
 
   return {
-    ...plan,
+    ...plan ?? PLANS[0],
     stripeSubscriptionId: dbUser.stripeSubscriptionId,
     stripeCurrentPeriodEnd: dbUser.stripeCurrentPeriodEnd,
     stripeCustomerId: dbUser.stripeCustomerId,

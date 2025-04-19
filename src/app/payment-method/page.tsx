@@ -53,8 +53,11 @@ export default function PaymentMethod() {
       secret
     );
 
-    setformData({ ...formData, signature: hashedSignature });
-  }, [formData.amount]);
+    setformData((prevFormData) => ({ 
+      ...prevFormData, 
+      signature: hashedSignature 
+    }));
+  }, [formData.amount, formData.transaction_uuid, formData.product_code, formData.secret]);
 
   return (
     <div className="min-h-screen bg-gray-50 py-16 px-4 sm:px-6 lg:px-8">
@@ -142,7 +145,7 @@ export default function PaymentMethod() {
                 <h2 className="text-2xl font-semibold text-gray-800">eSewa</h2>
               </div>
               <p className="text-gray-600 mb-6">
-                Nepal's leading digital wallet for quick and easy local
+                Nepal&apos;s leading digital wallet for quick and easy local
                 transactions.
               </p>
               <Button

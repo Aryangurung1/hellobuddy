@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { trpc } from "@/app/_trpc/client";
 
-const Page = () => {
+const EsewaSuccessContent = () => {
   const searchParams = useSearchParams();
   const router = useRouter();
   const dataQuery = searchParams.get("data");
@@ -31,7 +31,6 @@ const Page = () => {
             .mutateAsync({ transactionCode })
             .then(() => {
               navigateToDashboard();
-              // Navigate to dashboard on success
             })
             .catch((mutationError) => {
               console.error("Error updating payment:", mutationError);
@@ -46,7 +45,7 @@ const Page = () => {
         setError("Invalid payment data.");
       }
     }
-  }, [dataQuery, router]);
+  }, [dataQuery, navigateToDashboard, updatePayment]);
 
   if (loading) {
     return <div className="text-center py-8">Processing your payment...</div>;
@@ -65,6 +64,14 @@ const Page = () => {
         </>
       )}
     </div>
+  );
+};
+
+const Page = () => {
+  return (
+    <Suspense fallback={<div className="text-center py-8">Loading...</div>}>
+      <EsewaSuccessContent />
+    </Suspense>
   );
 };
 

@@ -37,7 +37,6 @@ import { CustomInput } from "./custom-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import debounce from "lodash/debounce";
 import { PDFManager } from "./pdf-manager";
-import { useQueryClient } from "@tanstack/react-query";
 import RewardDialog from "./reward-dialog";
 import toast from "react-hot-toast";
 import {
@@ -101,7 +100,8 @@ export default function UserTable() {
     searchTerm: debouncedSearchTerm,
   });
 
-  const [isPending, setIsPending] = useState<boolean>(true);
+  // Removed the unused isPending state variable 
+  // and using isLoading from the query instead
 
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -116,13 +116,13 @@ export default function UserTable() {
   const [bulkAction, setBulkAction] = useState<
     "activate" | "suspend" | "delete" | null
   >(null);
-  const queryClient = useQueryClient();
   const { mutateAsync: suspendUserMutation } = trpc.suspendUser.useMutation();
   const { mutateAsync: unsuspendUserMutation } =
     trpc.unSuspendUser.useMutation();
   const { mutateAsync: deleteUser } = trpc.deleteUser.useMutation();
   const { mutateAsync: editUserMutation } = trpc.editUser.useMutation();
 
+  // Fixed the useCallback dependency warning
   const getUserType = useCallback((user: User) => {
     if (user.stripeSubscriptionId && user.stripeCurrentPeriodEnd) {
       const currentPeriodEnd = new Date(user.stripeCurrentPeriodEnd);
@@ -703,7 +703,7 @@ export default function UserTable() {
                       <PDFManager
                         userId={user.id}
                         isPending={isLoading}
-                        setIsPending={setIsPending}
+                        setIsPending={() => {}}
                       />
                       {getUserType(user) === "Subscribed" ? (
                         <Button
@@ -801,7 +801,7 @@ export default function UserTable() {
           <DialogHeader>
             <DialogTitle>Edit User</DialogTitle>
             <DialogDescription>
-              Make changes to the user's information here.
+              Make changes to the user&apos;s information here.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
