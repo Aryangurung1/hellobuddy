@@ -52,7 +52,32 @@ const UploadDropzone = ({ isSubscribed }: { isSubscribed: boolean }) => {
   return (
     <Dropzone
       multiple={false}
-      onDrop={async (acceptedFiles) => {
+      onDrop={async (acceptedFiles, rejectedFiles) => {
+        // Check if the file is a PDF
+        if (
+          acceptedFiles.length > 0 &&
+          !acceptedFiles[0].type.includes("pdf")
+        ) {
+          toast({
+            title: "Invalid file format",
+            description: "Please upload a PDF file only",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Check if there are rejected files (this could be due to other reasons)
+        if (rejectedFiles.length > 0) {
+          toast({
+            title: "File upload failed",
+            description: "Please check file type and size requirements",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (acceptedFiles.length === 0) return;
+
         setIsUploading(true);
         const progressInterval = startSimulatedProgress();
 
@@ -62,8 +87,10 @@ const UploadDropzone = ({ isSubscribed }: { isSubscribed: boolean }) => {
         const res = await startUpload(acceptedFiles);
 
         if (!res) {
+          clearInterval(progressInterval);
+          setIsUploading(false);
           return toast({
-            title: "Something went wrong 1",
+            title: "Something went wrong",
             description: "please try again later",
             variant: "destructive",
           });
@@ -74,8 +101,10 @@ const UploadDropzone = ({ isSubscribed }: { isSubscribed: boolean }) => {
         const key = fileResponse?.key;
 
         if (!key) {
+          clearInterval(progressInterval);
+          setIsUploading(false);
           return toast({
-            title: "Something went wrong 2",
+            title: "Something went wrong",
             description: "please try again later",
             variant: "destructive",
           });
@@ -86,18 +115,23 @@ const UploadDropzone = ({ isSubscribed }: { isSubscribed: boolean }) => {
 
         startPolling({ key });
       }}
+      accept={{
+        "application/pdf": [".pdf"],
+      }}
     >
       {({ getRootProps, getInputProps, acceptedFiles }) => (
         <div
-          {...getRootProps({
-            onClick: (event) => event.preventDefault(), // Prevent Dropzone from opening the file explorer
-          })}
+          {...getRootProps()}
           className="border h-64 m-4 border-dashed border-gray-300 rounded-lg"
         >
           <div className="flex items-center justify-center h-full w-full">
             <label
               htmlFor="dropzone-file"
               className="flex flex-col items-center justify-center w-full h-full rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100"
+              onClick={(e) => {
+                // Don't propagate the click to the parent div
+                e.stopPropagation();
+              }}
             >
               <div className="flex flex-col items-center justify-center pt-5 pb-6">
                 <Cloud className="h-6 w-6 text-zinc-500 mb-2" />

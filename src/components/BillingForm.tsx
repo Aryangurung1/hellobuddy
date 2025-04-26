@@ -3,6 +3,7 @@
 import { getUserSubscriptionPlan } from "@/lib/stripe";
 import { trpc } from "@/app/_trpc/client";
 import MaxWidthWrapper from "./MaxWidthWrapper";
+import { cn } from "@/lib/utils";
 import {
   Card,
   CardDescription,
@@ -67,7 +68,13 @@ const BillingForm = ({ subscriptionPlan }: BillingFormProps) => {
           </CardHeader>
 
           <CardFooter className="flex flex-col items-start space-y-2 md:flex-row md:justify-between md:space-x-0">
-            <Button type="submit">
+            <Button
+              type="submit"
+              className={cn(
+                "block",
+                subscriptionPlan.paymentMethod === "eSewa" && "hidden"
+              )}
+            >
               {isPending ? (
                 <Loader2 className="mr-4 h-4 w-4 animate-spin" />
               ) : null}
@@ -81,7 +88,15 @@ const BillingForm = ({ subscriptionPlan }: BillingFormProps) => {
                 {subscriptionPlan.isCanceled
                   ? "Your plan will be canceled on "
                   : "Your plan renews on"}
-                {format(subscriptionPlan.stripeCurrentPeriodEnd!, "dd.MM.yyyy")}
+                {subscriptionPlan.paymentMethod === "Stripe"
+                  ? format(
+                      subscriptionPlan.stripeCurrentPeriodEnd!,
+                      "dd.MM.yyyy"
+                    )
+                  : format(
+                      subscriptionPlan.esewaCurrentPeriodEnd!,
+                      "dd.MM.yyyy"
+                    )}
                 .
               </p>
             ) : null}

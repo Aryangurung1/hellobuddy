@@ -20,6 +20,8 @@ export async function getUserSubscriptionPlan() {
       isSubscribed: false,
       isCanceled: false,
       stripeCurrentPeriodEnd: null,
+      paymentMethod: null,
+      esewaCurrentPeriodEnd: null,
     };
   }
 
@@ -37,6 +39,8 @@ export async function getUserSubscriptionPlan() {
       isSubscribed: false,
       isCanceled: false,
       stripeCurrentPeriodEnd: null,
+      paymentMethod: null,
+      esewaCurrentPeriodEnd: null,
     };
   }
 
@@ -68,11 +72,13 @@ export async function getUserSubscriptionPlan() {
   }
 
   return {
-    ...plan ?? PLANS[0],
+    ...(plan ?? PLANS[0]),
     stripeSubscriptionId: dbUser.stripeSubscriptionId,
     stripeCurrentPeriodEnd: dbUser.stripeCurrentPeriodEnd,
     stripeCustomerId: dbUser.stripeCustomerId,
     isSubscribed,
     isCanceled,
+    paymentMethod: dbUser.paymentMethod,
+    esewaCurrentPeriodEnd: dbUser.esewaCurrentPeriodEnd,
   };
 }
