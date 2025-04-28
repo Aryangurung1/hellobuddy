@@ -611,40 +611,57 @@ export const appRouter = router({
       console.log("userID", userId);
 
       try {
+        // Check if an invoice already exists for this transaction
+        const existingInvoice = await db.invoice.findFirst({
+          where: {
+            paymentId: input.transactionCode,
+            paymentMethod: "eSewa",
+          },
+        });
+
+        if (existingInvoice) {
+          throw new Error("This payment has already been processed.");
+        }
+
         // Calculate subscription period
         const startDate = new Date();
         const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days validity
 
-        // Update the user payment details
-        const updatedUser = await db.user.update({
-          where: { id: userId },
-          data: {
-            esewaPaymentId: input.transactionCode,
-            esewaCurrentPeriodEnd: endDate,
-            paymentMethod: "eSewa",
-          },
+        // Update the user payment details in a transaction to ensure atomicity
+        const result = await db.$transaction(async (prisma) => {
+          // Update user details
+          const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: {
+              esewaPaymentId: input.transactionCode,
+              esewaCurrentPeriodEnd: endDate,
+              paymentMethod: "eSewa",
+            },
+          });
+
+          // Create invoice record
+          const invoice = await prisma.invoice.create({
+            data: {
+              amount: 29.99, // Set your standard price here
+              currency: "NPR", // Nepalese Rupee for eSewa
+              status: "PAID", // eSewa payments are considered paid immediately
+              paymentMethod: "eSewa",
+              paymentId: input.transactionCode,
+              subscriptionPeriodStart: startDate,
+              subscriptionPeriodEnd: endDate,
+              description: "Monthly Subscription - eSewa Payment",
+              userId,
+              paidAt: new Date(), // Mark as paid immediately
+            },
+          });
+
+          return { user: updatedUser, invoice };
         });
 
-        // Create an invoice record
-        await db.invoice.create({
-          data: {
-            amount: 29.99, // Set your standard price here
-            currency: "NPR", // Nepalese Rupee for eSewa
-            status: "PAID", // eSewa payments are considered paid immediately
-            paymentMethod: "eSewa",
-            paymentId: input.transactionCode,
-            subscriptionPeriodStart: startDate,
-            subscriptionPeriodEnd: endDate,
-            description: "Monthly Subscription - eSewa Payment",
-            userId,
-            paidAt: new Date(), // Mark as paid immediately
-          },
-        });
-
-        return { success: true, user: updatedUser };
+        return { success: true, user: result.user };
       } catch (error) {
         console.error("Error updating payment:", error);
-        throw new Error("Failed to update payment.");
+        throw error;
       }
     }),
 

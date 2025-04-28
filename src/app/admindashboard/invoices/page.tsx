@@ -29,12 +29,15 @@ import {
   FileText,
   Copy,
   Search,
+  Filter,
 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { trpc } from "@/app/_trpc/client";
@@ -50,12 +53,13 @@ import { generateExcelFile } from "@/lib/generate-excel";
 import { generatePDFFile } from "@/lib/generate-pdf";
 import type { DateRange } from "react-day-picker";
 
-
+type PaymentMethod = "all" | "Stripe" | "eSewa";
 
 export default function InvoicesPage() {
   const [currentPage, setCurrentPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>("all");
 
   // Fetch invoices with pagination and date range filter
   const { data, isLoading } = trpc.getInvoices.useQuery(
@@ -76,9 +80,14 @@ export default function InvoicesPage() {
     setCurrentPage(0); // Reset to first page when filter changes
   };
 
-  // Filter invoices based on search query
+  // Filter invoices based on search query and payment method
   const filteredInvoices =
     data?.invoices?.filter((invoice) => {
+      // Payment method filter
+      if (selectedPaymentMethod !== "all" && invoice.paymentMethod !== selectedPaymentMethod) {
+        return false;
+      }
+
       if (!searchQuery.trim()) return true;
 
       const query = searchQuery.toLowerCase().trim();
@@ -91,7 +100,7 @@ export default function InvoicesPage() {
     }) || [];
 
   const formatCurrency = (amount: number, currency: string) => {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat(currency === "NPR" ? "ne-NP" : "en-US", {
       style: "currency",
       currency: currency,
     }).format(amount);
@@ -136,13 +145,13 @@ export default function InvoicesPage() {
 
   // Function to export all invoices as Excel
   const exportAllAsExcel = () => {
-    if (!data?.invoices || data.invoices.length === 0) {
+    if (!filteredInvoices || filteredInvoices.length === 0) {
       alert("No invoices to export");
       return;
     }
 
     try {
-      generateExcelFile(data.invoices, "all-invoices");
+      generateExcelFile(filteredInvoices, "all-invoices");
     } catch (error) {
       console.error("Failed to generate Excel file:", error);
       alert("Failed to generate Excel file. Please try again.");
@@ -170,14 +179,47 @@ export default function InvoicesPage() {
                 View and manage all subscription invoices.
               </CardDescription>
             </div>
-            <div className="relative w-64">
-              <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search by ID or customer..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8"
-              />
+            <div className="flex items-center gap-4">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <Filter className="h-4 w-4" />
+                    {selectedPaymentMethod === "all" 
+                      ? "All Payment Methods" 
+                      : `${selectedPaymentMethod} Only`}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuCheckboxItem
+                    checked={selectedPaymentMethod === "all"}
+                    onCheckedChange={() => setSelectedPaymentMethod("all")}
+                  >
+                    All Payment Methods
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={selectedPaymentMethod === "Stripe"}
+                    onCheckedChange={() => setSelectedPaymentMethod("Stripe")}
+                  >
+                    Stripe Only
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={selectedPaymentMethod === "eSewa"}
+                    onCheckedChange={() => setSelectedPaymentMethod("eSewa")}
+                  >
+                    eSewa Only
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <div className="relative w-64">
+                <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search by ID or customer..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -229,6 +271,8 @@ export default function InvoicesPage() {
                       <TableCell colSpan={7} className="text-center py-8">
                         {searchQuery.trim()
                           ? "No invoices found matching your search"
+                          : selectedPaymentMethod !== "all"
+                          ? `No ${selectedPaymentMethod} invoices found for the selected time period`
                           : "No invoices found for the selected time period"}
                       </TableCell>
                     </TableRow>
