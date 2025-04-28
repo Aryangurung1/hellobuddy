@@ -1201,6 +1201,11 @@ export const appRouter = router({
         });
       }
 
+      // Delete all invoices associated with the user
+      await db.invoice.deleteMany({
+        where: { userId: id },
+      });
+
       // Delete the user from Prisma
       await db.user.delete({
         where: { id },
